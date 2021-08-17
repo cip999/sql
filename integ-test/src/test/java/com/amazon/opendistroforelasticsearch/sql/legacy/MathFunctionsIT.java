@@ -227,11 +227,11 @@ public class MathFunctionsIT extends SQLIntegTestCase {
   @Test
   public void lnInAggregationShouldPass() {
     assertThat(
-        executeQuery(
-            "SELECT LN(age) FROM " + TestsConstants.TEST_INDEX_ACCOUNT +
-                " WHERE age IS NOT NULL GROUP BY LN(age) ORDER BY LN(age)", "jdbc"
-        ),
-        containsString("\"type\": \"double\"")
+            executeQuery(
+                    "SELECT LN(age) FROM " + TestsConstants.TEST_INDEX_ACCOUNT +
+                            " WHERE age IS NOT NULL GROUP BY LN(age) ORDER BY LN(age)", "jdbc"
+            ),
+            containsString("\"type\": \"double\"")
     );
   }
 
@@ -242,6 +242,18 @@ public class MathFunctionsIT extends SQLIntegTestCase {
       double rand = (double) getField(hit, "rand");
       assertTrue(rand >= 0 && rand < 1);
     }
+  }
+
+  @Test
+  public void greatestWithOperatorAliasAndGroupBy() {
+    assertThat(
+            executeQuery(
+            "SELECT greatest(age * 2, 50) AS alias FROM " + TestsConstants.TEST_INDEX_ACCOUNT +
+                    " GROUP BY greatest(age * 2, 50)",
+            "jdbc"
+            ),
+            containsString("\"type\": \"integer\"")
+    );
   }
 
   private SearchHit[] query(String select, String... statements) throws IOException {

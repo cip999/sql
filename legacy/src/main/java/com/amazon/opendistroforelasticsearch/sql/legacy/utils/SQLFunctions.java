@@ -75,7 +75,7 @@ public class SQLFunctions {
     );
 
     private static final Set<String> binaryOperators = Sets.newHashSet(
-            "add", "multiply", "divide", "subtract", "modulus"
+            "add", "multiply", "divide", "subtract", "modulus", "greatest", "least"
     );
 
     private static final Set<String> dateFunctions = Sets.newHashSet(
@@ -332,6 +332,13 @@ public class SQLFunctions {
                 functionStr = modulus((SQLExpr) paramers.get(0).value, (SQLExpr) paramers.get(1).value);
                 break;
 
+            case "greatest":
+                functionStr = greatest((SQLExpr) paramers.get(0).value, (SQLExpr) paramers.get(1).value);
+                break;
+            case "least":
+                functionStr = least((SQLExpr) paramers.get(0).value, (SQLExpr) paramers.get(1).value);
+                break;
+
             case "field":
                 functionStr = field(Util.expr2Object((SQLExpr) paramers.get(0).value).toString());
                 break;
@@ -559,7 +566,7 @@ public class SQLFunctions {
     }
 
     public Tuple<String, String> add(SQLExpr a, SQLExpr b) {
-        return binaryOpertator("add", "+", a, b);
+        return binaryOperator("add", "+", a, b);
     }
 
     public Tuple<String, String> assign(SQLExpr a) {
@@ -569,7 +576,7 @@ public class SQLFunctions {
     }
 
     private Tuple<String, String> modulus(SQLExpr a, SQLExpr b) {
-        return binaryOpertator("modulus", "%", a, b);
+        return binaryOperator("modulus", "%", a, b);
     }
 
     public Tuple<String, String> field(String a) {
@@ -578,18 +585,36 @@ public class SQLFunctions {
     }
 
     private Tuple<String, String> subtract(SQLExpr a, SQLExpr b) {
-        return binaryOpertator("subtract", "-", a, b);
+        return binaryOperator("subtract", "-", a, b);
     }
 
     private Tuple<String, String> multiply(SQLExpr a, SQLExpr b) {
-        return binaryOpertator("multiply", "*", a, b);
+        return binaryOperator("multiply", "*", a, b);
     }
 
     private Tuple<String, String> divide(SQLExpr a, SQLExpr b) {
-        return binaryOpertator("divide", "/", a, b);
+        return binaryOperator("divide", "/", a, b);
     }
 
-    private Tuple<String, String> binaryOpertator(String methodName, String operator, SQLExpr a, SQLExpr b) {
+    private Tuple<String, String> greatest(SQLExpr a, SQLExpr b) {
+        String name = nextId("greatest");
+        return new Tuple<>(name,
+                scriptDeclare(a) + scriptDeclare(b) + convertType(a) + convertType(b) +
+                        StringUtils.format(
+                                "def %s = Math.max(%s, %s)",
+                                name, extractName(a), extractName(b)));
+    }
+
+    private Tuple<String, String> least(SQLExpr a, SQLExpr b) {
+        String name = nextId("least");
+        return new Tuple<>(name,
+                scriptDeclare(a) + scriptDeclare(b) + convertType(a) + convertType(b) +
+                        StringUtils.format(
+                                "def %s = Math.min(%s, %s)",
+                                name, extractName(a), extractName(b)));
+    }
+
+    private Tuple<String, String> binaryOperator(String methodName, String operator, SQLExpr a, SQLExpr b) {
         String name = nextId(methodName);
         return new Tuple<>(name,
                 scriptDeclare(a) + scriptDeclare(b) + convertType(a) + convertType(b)
