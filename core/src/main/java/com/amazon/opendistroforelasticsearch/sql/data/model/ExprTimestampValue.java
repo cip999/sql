@@ -19,7 +19,6 @@ package com.amazon.opendistroforelasticsearch.sql.data.model;
 
 import com.amazon.opendistroforelasticsearch.sql.data.type.ExprCoreType;
 import com.amazon.opendistroforelasticsearch.sql.data.type.ExprType;
-import com.amazon.opendistroforelasticsearch.sql.data.utils.ExprDateFormatters;
 import com.amazon.opendistroforelasticsearch.sql.exception.SemanticCheckException;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -80,8 +79,7 @@ public class ExprTimestampValue extends AbstractExprValue {
     this.datetimeFormat = ALWAYS_INCLUDE_TIME;
 
     try {
-      this.timestamp = LocalDateTime.parse(timestamp,
-          ExprDateFormatters.TOLERANT_PARSER_DATE_TIME_FORMATTER)
+      this.timestamp = LocalDateTime.parse(timestamp, FORMATTER_VARIABLE_MICROS)
           .atZone(ZONE)
           .toInstant();
     } catch (DateTimeParseException e) {
