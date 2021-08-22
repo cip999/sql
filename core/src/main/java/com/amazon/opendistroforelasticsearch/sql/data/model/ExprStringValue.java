@@ -18,7 +18,6 @@ package com.amazon.opendistroforelasticsearch.sql.data.model;
 import com.amazon.opendistroforelasticsearch.sql.data.type.ExprCoreType;
 import com.amazon.opendistroforelasticsearch.sql.data.type.ExprType;
 import com.amazon.opendistroforelasticsearch.sql.exception.SemanticCheckException;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -79,11 +78,6 @@ public class ExprStringValue extends AbstractExprValue {
     } catch (SemanticCheckException e) {
       return new ExprTimeValue(value).timeValue();
     }
-  }
-
-  @Override
-  public Instant timestampValue() {
-    return new ExprTimestampValue(value).timestampValue();
   }
 
   @Override
