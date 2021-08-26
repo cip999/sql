@@ -82,7 +82,7 @@ public class SQLFunctions {
     );
 
     private static final Set<String> conditionalFunctions = Sets.newHashSet(
-            "if", "ifnull", "isnull"
+            "if", "ifnull", "isnull", "coalesce"
     );
 
     private static final Set<String> utilityFunctions = Sets.newHashSet("field", "assign", "cast");
@@ -397,6 +397,12 @@ public class SQLFunctions {
             case "isnull":
                 functionStr = isnull((SQLExpr) paramers.get(0).value);
                 break;
+            case "coalesce":
+                List<SQLExpr> newParamers = paramers.stream().
+                        map(kv -> (SQLExpr) kv.value).
+                        collect(Collectors.toList());
+                functionStr = coalesce(newParamers);
+                functionStr = coalesce(newParamers);
 
             default:
 
@@ -1035,6 +1041,30 @@ public class SQLFunctions {
 
         return new Tuple<>(name, scriptDeclare(expr) + def(name,
                 StringUtils.format("((%s) ? 1 : 0)", checkIfNull(expr))));
+    }
+
+    private Tuple<String, String> coalesce(List<SQLExpr> columns) {
+        String name = nextId("coalesce");
+
+        String definition = "";
+
+        for (SQLExpr expr : columns) {
+            definition = definition.concat(scriptDeclare(expr));
+        }
+
+        definition += "def " + name + "; ";
+        definition += StringUtils.format("if (!(%s)) {%s = %s;} ",
+                checkIfNull(columns.get(0)), name, getPropertyOrStringValue(columns.get(0)));
+
+        for (int i = 1; i < columns.size(); i++) {
+            SQLExpr expr = columns.get(i);
+            definition = definition.concat(StringUtils.format("else if (!(%s)) {%s = %s;} ",
+                    checkIfNull(expr), name, getPropertyOrStringValue(expr)));
+        }
+
+        definition += StringUtils.format("else {%1$s = null;} %1$s = %1$s", name);
+
+        return new Tuple<>(name, definition);
     }
 
     public String getCastScriptStatement(String name, String castType, List<KVValue> paramers)
