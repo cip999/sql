@@ -42,6 +42,7 @@ public enum ScalarFunction implements TypeExpression {
     CAST(),
     CBRT(func(T(NUMBER)).to(T)),
     CEIL(func(T(NUMBER)).to(T)),
+    COALESCE(),
     CONCAT(), // TODO: varargs support required
     CONCAT_WS(),
     COS(func(T(NUMBER)).to(DOUBLE)),
