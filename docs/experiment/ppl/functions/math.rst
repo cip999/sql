@@ -46,8 +46,8 @@ Return type: DOUBLE
 
 Example::
 
-    od> source=people | eval `ACOS(0)` = ACOS(0) | fields `ACOS(0)`
-    fetched rows / total rows = 1/1
+    od> source=people | eval `ACOS(0)` = ACOS(0) | fields `ACOS(0) | limit 1`
+    fetched rows / total rows = 1/6
     +--------------------+
     | ACOS(0)            |
     |--------------------|
