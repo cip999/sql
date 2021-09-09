@@ -23,7 +23,7 @@ Return type: INTEGER/LONG/FLOAT/DOUBLE
 
 Example::
 
-    od> source=people | eval `ABS(-1)` = ABS(-1) | fields `ABS(-1)`
+    od> source=simple | eval `ABS(-1)` = ABS(-1) | fields `ABS(-1)`
     fetched rows / total rows = 1/1
     +-----------+
     | ABS(-1)   |
@@ -46,8 +46,8 @@ Return type: DOUBLE
 
 Example::
 
-    od> source=people | eval `ACOS(0)` = ACOS(0) | fields `ACOS(0) | limit 1`
-    fetched rows / total rows = 1/6
+    od> source=people | eval `ACOS(0)` = ACOS(0) | fields `ACOS(0)`
+    fetched rows / total rows = 1/1
     +--------------------+
     | ACOS(0)            |
     |--------------------|
