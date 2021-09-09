@@ -36,9 +36,6 @@ import static com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.type.
 import static com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.type.ElasticsearchDataType.ES_IP;
 import static com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.type.ElasticsearchDataType.ES_TEXT;
 import static com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.type.ElasticsearchDataType.ES_TEXT_KEYWORD;
-import static com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.value.ElasticsearchDateFormatters.SQL_LITERAL_DATE_TIME_FORMAT;
-import static com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.value.ElasticsearchDateFormatters.STRICT_DATE_OPTIONAL_TIME_FORMATTER;
-import static com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.value.ElasticsearchDateFormatters.STRICT_HOUR_MINUTE_SECOND_FORMATTER;
 
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprBooleanValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprByteValue;
@@ -56,6 +53,7 @@ import com.amazon.opendistroforelasticsearch.sql.data.model.ExprTimestampValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprTupleValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprValue;
 import com.amazon.opendistroforelasticsearch.sql.data.type.ExprType;
+import com.amazon.opendistroforelasticsearch.sql.data.utils.ExprDateFormatters;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.utils.Content;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.utils.ElasticsearchJsonContent;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.utils.ObjectContent;
@@ -95,13 +93,6 @@ public class ElasticsearchExprValueFactory {
   private Map<String, ExprType> typeMapping;
 
   private Integer limit;
-
-  private static final DateTimeFormatter DATE_TIME_FORMATTER =
-      new DateTimeFormatterBuilder()
-          .appendOptional(SQL_LITERAL_DATE_TIME_FORMAT)
-          .appendOptional(STRICT_DATE_OPTIONAL_TIME_FORMATTER)
-          .appendOptional(STRICT_HOUR_MINUTE_SECOND_FORMATTER)
-          .toFormatter();
 
   private static final String TOP_PATH = "";
 
@@ -239,13 +230,14 @@ public class ElasticsearchExprValueFactory {
   private ExprValue constructTimestamp(String value) {
     try {
       return new ExprTimestampValue(
-          // Using Elasticsearch DateFormatters for now.
-          DateFormatters.from(DATE_TIME_FORMATTER.parse(value)).toInstant());
+              // Using Elasticsearch DateFormatters for now.
+              DateFormatters.from(ExprDateFormatters.TOLERANT_PARSER_DATE_TIME_FORMATTER
+                      .parse(value)).toInstant());
     } catch (DateTimeParseException e) {
       throw new IllegalStateException(
-          String.format(
-              "Construct ExprTimestampValue from \"%s\" failed, unsupported date format.", value),
-          e);
+              String.format(
+                      "Construct ExprTimestampValue from \"%s\" failed, unsupported date format.", value),
+              e);
     }
   }
 
