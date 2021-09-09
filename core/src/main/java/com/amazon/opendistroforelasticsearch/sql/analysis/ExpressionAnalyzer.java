@@ -39,6 +39,7 @@ import com.amazon.opendistroforelasticsearch.sql.ast.expression.WindowFunction;
 import com.amazon.opendistroforelasticsearch.sql.ast.expression.Xor;
 import com.amazon.opendistroforelasticsearch.sql.common.antlr.SyntaxCheckException;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprValueUtils;
+import com.amazon.opendistroforelasticsearch.sql.data.type.ExprCoreType;
 import com.amazon.opendistroforelasticsearch.sql.data.type.ExprType;
 import com.amazon.opendistroforelasticsearch.sql.exception.SemanticCheckException;
 import com.amazon.opendistroforelasticsearch.sql.expression.DSL;
@@ -52,7 +53,6 @@ import com.amazon.opendistroforelasticsearch.sql.expression.function.BuiltinFunc
 import com.amazon.opendistroforelasticsearch.sql.expression.function.BuiltinFunctionRepository;
 import com.amazon.opendistroforelasticsearch.sql.expression.function.FunctionName;
 import com.amazon.opendistroforelasticsearch.sql.expression.window.aggregation.AggregateWindowFunction;
-import com.amazon.opendistroforelasticsearch.sql.expression.window.ranking.RankingWindowFunction;
 import com.google.common.collect.ImmutableSet;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -248,20 +248,23 @@ public class ExpressionAnalyzer extends AbstractNodeVisitor<Expression, Analysis
 
   private Expression visitIdentifier(String ident, AnalysisContext context) {
     TypeEnvironment typeEnv = context.peek();
+
+    List<String> paths = Arrays.asList(ident.split("\\."));
+    String prefixPath = "";
+
+    for (String p : paths.subList(0, paths.size() - 1)) {
+      prefixPath = (prefixPath.equals("") ? p : prefixPath + "." + p);
+      ExprType exprType = typeEnv.resolve(new Symbol(Namespace.FIELD_NAME, prefixPath));
+      if (exprType == ExprCoreType.ARRAY) {
+        return DSL.nested(ident, prefixPath,
+                typeEnv.resolve(new Symbol(Namespace.FIELD_NAME, ident)));
+      }
+    }
+
     ReferenceExpression ref = DSL.ref(ident,
         typeEnv.resolve(new Symbol(Namespace.FIELD_NAME, ident)));
 
-    // Fall back to old engine too if type is not supported semantically
-    if (isTypeNotSupported(ref.type())) {
-      throw new SyntaxCheckException(String.format(
-          "Identifier [%s] of type [%s] is not supported yet", ident, ref.type()));
-    }
     return ref;
-  }
-
-  // Array type is not supporte yet.
-  private boolean isTypeNotSupported(ExprType type) {
-    return "array".equalsIgnoreCase(type.typeName());
   }
 
 }

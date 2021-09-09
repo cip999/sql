@@ -65,4 +65,16 @@ class ExprTupleValueTest {
         () -> compare(tupleValue, tupleValue));
     assertEquals("ExprTupleValue instances are not comparable", exception.getMessage());
   }
+
+  @Test
+  public void deepCopyTest() {
+    ExprValue tupleValue = ExprValueUtils.tupleValue(ImmutableMap.of(
+            "integer_value", 2,
+            "struct_value", ImmutableMap.of(
+                    "float_value", 1f
+            ))
+    );
+    ExprValue tupleValueCopy = ((ExprTupleValue) tupleValue).deepCopy();
+    assertEquals(tupleValue.toString(), tupleValueCopy.toString());
+  }
 }

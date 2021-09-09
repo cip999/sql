@@ -40,6 +40,19 @@ public class ExprTupleValue extends AbstractExprValue {
     return new ExprTupleValue(linkedHashMap);
   }
 
+  /**
+   * Returns a deep copy of self by means of recursive calls.
+   */
+  public ExprTupleValue deepCopy() {
+    LinkedHashMap<String, ExprValue> resultMap = new LinkedHashMap<>();
+    for (Entry<String, ExprValue> entry : valueMap.entrySet()) {
+      ExprValue v = entry.getValue();
+      resultMap.put(entry.getKey(),
+              v instanceof ExprTupleValue ? ((ExprTupleValue) v).deepCopy() : v);
+    }
+    return new ExprTupleValue(resultMap);
+  }
+
   @Override
   public Object value() {
     LinkedHashMap<String, Object> resultMap = new LinkedHashMap<>();

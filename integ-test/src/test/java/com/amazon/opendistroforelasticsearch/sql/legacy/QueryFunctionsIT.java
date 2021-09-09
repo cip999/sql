@@ -20,13 +20,18 @@ import static com.amazon.opendistroforelasticsearch.sql.legacy.TestsConstants.TE
 import static com.amazon.opendistroforelasticsearch.sql.legacy.TestsConstants.TEST_INDEX_NESTED_TYPE;
 import static com.amazon.opendistroforelasticsearch.sql.legacy.TestsConstants.TEST_INDEX_PHRASE;
 import static org.hamcrest.Matchers.anyOf;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.everyItem;
+import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.startsWith;
 
 import com.amazon.opendistroforelasticsearch.sql.legacy.utils.StringUtils;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -95,11 +100,6 @@ public class QueryFunctionsIT extends SQLIntegTestCase {
 
   @Test
   public void matchQueryNestedField() throws IOException {
-    SearchHit[] hits =
-        query("SELECT comment.data", FROM_NESTED, "WHERE MATCH_QUERY(NESTED(comment.data), 'aa')")
-            .getHits().getHits();
-    Map<String, Object> source = hits[0].getSourceAsMap();
-    // SearchHits innerHits = hits[0].getInnerHits().get("comment");
     assertThat(
         query(
             "SELECT comment.data",
@@ -107,8 +107,7 @@ public class QueryFunctionsIT extends SQLIntegTestCase {
             "WHERE MATCH_QUERY(NESTED(comment.data), 'aa')"
         ),
         hits(
-            anyOf(hasNestedField("comment", "data", "aa"),
-                hasNestedArrayField("comment", "data", "aa"))
+            hasNestedFieldOfArray("comment", "data", "aa")
         )
     );
   }
@@ -136,9 +135,7 @@ public class QueryFunctionsIT extends SQLIntegTestCase {
             "WHERE SCORE(MATCH_QUERY(NESTED(comment.data), 'ab'), 10)"
         ),
         hits(
-            //hasValueForFields("ab", "comment.data")
-            hasNestedField("comment",
-                "data", "ab")
+            hasNestedFieldOfArray("comment", "data", "ab")
         )
     );
   }
@@ -254,6 +251,23 @@ public class QueryFunctionsIT extends SQLIntegTestCase {
   private final Matcher<SearchHit> hasFieldWithPrefix(String field, String prefix) {
     return featureValueOf(field, startsWith(prefix),
         hit -> (String) hit.getSourceAsMap().get(field));
+  }
+
+  private final Matcher<SearchHit> hasNestedFieldOfArray(String path, String field, String value) {
+    return anyOf(
+            featureValueOf(
+                    field, is(value),
+                    hit -> ((Map) ((List) hit.getSourceAsMap().get(path)).get(0)).get(field)
+            ),
+            featureValueOf(
+                    field, hasItems(value),
+                    hit -> {
+                      Object obj
+                              = ((Map) ((List) hit.getSourceAsMap().get(path)).get(0)).get(field);
+                      return obj instanceof List ? (List) obj : Collections.emptyList();
+                    }
+            )
+    );
   }
 
   private final Matcher<SearchHit> hasNestedField(String path, String field, String value) {

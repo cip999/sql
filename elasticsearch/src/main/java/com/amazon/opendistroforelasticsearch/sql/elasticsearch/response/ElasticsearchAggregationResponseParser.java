@@ -28,6 +28,8 @@ import org.elasticsearch.search.aggregations.Aggregation;
 import org.elasticsearch.search.aggregations.Aggregations;
 import org.elasticsearch.search.aggregations.bucket.composite.CompositeAggregation;
 import org.elasticsearch.search.aggregations.bucket.filter.Filter;
+import org.elasticsearch.search.aggregations.bucket.nested.InternalNested;
+import org.elasticsearch.search.aggregations.bucket.nested.Nested;
 import org.elasticsearch.search.aggregations.metrics.NumericMetricsAggregation;
 
 /**
@@ -83,9 +85,11 @@ public class ElasticsearchAggregationResponseParser {
       resultMap.put(
           aggregation.getName(),
           handleNanValue(((NumericMetricsAggregation.SingleValue) aggregation).value()));
-    } else if (aggregation instanceof Filter) {
-      // parse sub-aggregations for FilterAggregation response
-      List<Aggregation> aggList = ((Filter) aggregation).getAggregations().asList();
+    } else if (aggregation instanceof Filter || aggregation instanceof Nested) {
+      // Parse sub-aggregations for FilterAggregation and NestedAggregation response
+      List<Aggregation> aggList = aggregation instanceof Filter
+              ? ((Filter) aggregation).getAggregations().asList()
+              : ((Nested) aggregation).getAggregations().asList();
       aggList.forEach(internalAgg -> {
         Map<String, Object> intermediateMap = parseInternal(internalAgg);
         resultMap.put(internalAgg.getName(), intermediateMap.get(internalAgg.getName()));

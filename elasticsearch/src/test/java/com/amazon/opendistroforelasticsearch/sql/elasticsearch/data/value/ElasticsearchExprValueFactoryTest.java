@@ -46,25 +46,35 @@ import static com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.type.
 import static com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.type.ElasticsearchDataType.ES_TEXT;
 import static com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.type.ElasticsearchDataType.ES_TEXT_KEYWORD;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.amazon.opendistroforelasticsearch.sql.data.model.ExprCollectionValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprDateValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprDatetimeValue;
+import com.amazon.opendistroforelasticsearch.sql.data.model.ExprNullValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprTimeValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprTimestampValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprTupleValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprValue;
 import com.amazon.opendistroforelasticsearch.sql.data.type.ExprType;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.utils.ElasticsearchJsonContent;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
+import org.apache.lucene.search.TotalHits;
+import org.elasticsearch.common.bytes.BytesArray;
+import org.elasticsearch.search.SearchHit;
+import org.elasticsearch.search.SearchHits;
 import org.junit.jupiter.api.Test;
 
 class ElasticsearchExprValueFactoryTest {
@@ -89,6 +99,11 @@ class ElasticsearchExprValueFactoryTest {
           .put("arrayV", ARRAY)
           .put("arrayV.info", STRING)
           .put("arrayV.author", STRING)
+          .put("book", STRUCT)
+          .put("book.price", DOUBLE)
+          .put("book.author", ARRAY)
+          .put("book.author.name", STRING)
+          .put("book.author.age", INTEGER)
           .put("textV", ES_TEXT)
           .put("textKeywordV", ES_TEXT_KEYWORD)
           .put("ipV", ES_IP)
@@ -107,7 +122,7 @@ class ElasticsearchExprValueFactoryTest {
 
   @Test
   public void constructNullArrayValue() {
-    assertEquals(nullValue(), tupleValue("{\"intV\":[]}").get("intV"));
+    assertNull(tupleValue("{\"arrayV\":[]}"));
   }
 
   @Test
@@ -231,22 +246,22 @@ class ElasticsearchExprValueFactoryTest {
   @Test
   public void constructArray() {
     assertEquals(
-        new ExprCollectionValue(ImmutableList.of(new ExprTupleValue(
+        new ExprTupleValue(
             new LinkedHashMap<String, ExprValue>() {
               {
                 put("info", stringValue("zz"));
                 put("author", stringValue("au"));
               }
-            }))),
+            }),
         tupleValue("{\"arrayV\":[{\"info\":\"zz\",\"author\":\"au\"}]}").get("arrayV"));
     assertEquals(
-        new ExprCollectionValue(ImmutableList.of(new ExprTupleValue(
+        new ExprTupleValue(
             new LinkedHashMap<String, ExprValue>() {
               {
                 put("info", stringValue("zz"));
                 put("author", stringValue("au"));
               }
-            }))),
+            }),
         constructFromObject("arrayV", ImmutableList.of(
             ImmutableMap.of("info", "zz", "author", "au"))));
   }
@@ -344,17 +359,78 @@ class ElasticsearchExprValueFactoryTest {
   }
 
   @Test
+  public void constructHitWithInnerHits() {
+    SearchHit firstInnerHit = new SearchHit(1)
+            .sourceRef(new BytesArray("{\"name\": \"John\", \"age\": 22}"));
+    SearchHit secondInnerHit = new SearchHit(1)
+            .sourceRef(new BytesArray("{\"name\": \"Mark\", \"age\": 67}"));
+    SearchHit hit = new SearchHit(1)
+            .sourceRef(new BytesArray("{\"doubleV\": 2.3, \"book\": {"
+                    + "\"price\": 20.99, \"author\": ["
+                    + "{\"name\": \"John\", \"age\": 22}, "
+                    + "{\"name\": \"Mark\", \"age\": 67}]}}"));
+    hit.setInnerHits(Map.of("book.author",
+            new SearchHits(new SearchHit[]{firstInnerHit, secondInnerHit},
+                    new TotalHits(2, TotalHits.Relation.EQUAL_TO), 1f)));
+
+    List<ExprValue> construct = constructFromHit(hit, exprValueFactory);
+
+    assertEquals(2, construct.size());
+  }
+
+  @Test
+  public void constructHitWithInnerHitsAndLimit() {
+    ElasticsearchExprValueFactory exprValueFactory = new ElasticsearchExprValueFactory(
+            MAPPING, 1
+    );
+
+    SearchHit firstInnerHit = new SearchHit(1)
+            .sourceRef(new BytesArray("{\"name\": \"John\", \"age\": 22}"));
+    SearchHit secondInnerHit = new SearchHit(1)
+            .sourceRef(new BytesArray("{\"name\": \"Mark\", \"age\": 67}"));
+    SearchHit hit = new SearchHit(1)
+            .sourceRef(new BytesArray("{\"doubleV\": 2.3, \"book\": {\"author\": ["
+                    + "{\"name\": \"John\", \"age\": 22}, "
+                    + "{\"name\": \"Mark\", \"age\": 67}]}}"));
+    hit.setInnerHits(Map.of("book.author",
+            new SearchHits(new SearchHit[]{firstInnerHit, secondInnerHit},
+                    new TotalHits(2, TotalHits.Relation.EQUAL_TO), 1f)));
+
+    List<ExprValue> construct = constructFromHit(hit, exprValueFactory);
+
+    assertEquals(1, construct.size());
+  }
+
+  @Test
+  public void constructEmptyArray() {
+    assertNull(tupleValue("{\"arrayV\": []}"));
+  }
+
+  @Test
+  public void constructNullAndEmptyStruct() {
+    assertEquals(ExprNullValue.of(), tupleValue("{\"structV\": null}").get("structV"));
+    assertEquals(ExprNullValue.of(), tupleValue("{\"structV\": {}}").get("structV"));
+  }
+
+  @Test
   public void constructFromInvalidJsonThrowException() {
-    IllegalStateException exception =
+    IllegalStateException stringException =
         assertThrows(IllegalStateException.class, () -> tupleValue("{\"invalid_json:1}"));
-    assertEquals("invalid json: {\"invalid_json:1}.", exception.getMessage());
+    assertEquals("Invalid json: {\"invalid_json:1}", stringException.getMessage());
+
+    SearchHit hit = new SearchHit(1).sourceRef(new BytesArray("{\"invalid_json:1}"));
+    IllegalStateException hitException =
+            assertThrows(
+                    IllegalStateException.class, () -> constructFromHit(hit, exprValueFactory)
+            );
+    assertEquals("Invalid json: {\"invalid_json:1}", hitException.getMessage());
   }
 
   @Test
   public void noTypeFoundForMappingThrowException() {
     IllegalStateException exception =
         assertThrows(IllegalStateException.class, () -> tupleValue("{\"not_exist\":1}"));
-    assertEquals("No type found for field: not_exist.", exception.getMessage());
+    assertEquals("No type found for field: not_exist", exception.getMessage());
   }
 
   @Test
@@ -363,22 +439,27 @@ class ElasticsearchExprValueFactoryTest {
         new ElasticsearchExprValueFactory(ImmutableMap.of("type", new TestType()));
     IllegalStateException exception =
         assertThrows(IllegalStateException.class, () -> exprValueFactory.construct("{\"type\":1}"));
-    assertEquals("Unsupported type: TEST_TYPE for value: 1.", exception.getMessage());
+    assertEquals("Unsupported type: TEST_TYPE for value: 1", exception.getMessage());
 
     exception =
         assertThrows(IllegalStateException.class, () -> exprValueFactory.construct("type", 1));
     assertEquals(
-        "Unsupported type: TEST_TYPE for value: 1.",
+        "Unsupported type: TEST_TYPE for value: 1",
         exception.getMessage());
   }
 
   public Map<String, ExprValue> tupleValue(String jsonString) {
-    final ExprValue construct = exprValueFactory.construct(jsonString);
-    return construct.tupleValue();
+    final List<ExprValue> construct = exprValueFactory.construct(jsonString);
+    return construct.isEmpty() ? null : construct.get(0).tupleValue();
   }
 
   private ExprValue constructFromObject(String fieldName, Object value) {
-    return exprValueFactory.construct(fieldName, value);
+    final List<ExprValue> construct = exprValueFactory.construct(fieldName, value);
+    return construct.isEmpty() ? null : construct.get(0);
+  }
+
+  private List<ExprValue> constructFromHit(SearchHit hit, ElasticsearchExprValueFactory factory) {
+    return factory.construct(hit, "", STRUCT);
   }
 
   @EqualsAndHashCode

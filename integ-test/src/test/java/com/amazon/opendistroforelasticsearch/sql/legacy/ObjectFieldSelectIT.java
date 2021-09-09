@@ -80,18 +80,12 @@ public class ObjectFieldSelectIT extends SQLIntegTestCase {
   public void testSelectNestedFieldItself() {
     JSONObject response = new JSONObject(query("SELECT projects FROM %s"));
 
-    // Nested field is absent in ES Get Field Mapping response either hence "object" used
-    verifySchema(response, schema("projects", null, "object"));
+    verifySchema(response, schema("projects", null, "nested"));
 
-    // Expect nested field itself is returned in a single cell
     verifyDataRows(response,
-        rows(new JSONArray(
-            "[\n"
-                + "  {\"name\": \"AWS Redshift Spectrum querying\"},\n"
-                + "  {\"name\": \"AWS Redshift security\"},\n"
-                + "  {\"name\": \"AWS Aurora security\"}\n"
-                + "]")
-        )
+            rows(new JSONObject("{\"name\": \"AWS Redshift Spectrum querying\"}")),
+            rows(new JSONObject("{\"name\": \"AWS Redshift security\"}")),
+            rows(new JSONObject("{\"name\": \"AWS Aurora security\"}"))
     );
   }
 

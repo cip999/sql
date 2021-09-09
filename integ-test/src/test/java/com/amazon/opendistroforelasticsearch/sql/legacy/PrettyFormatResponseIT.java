@@ -148,7 +148,7 @@ public class PrettyFormatResponseIT extends SQLIntegTestCase {
   }
 
   @Test
-  public void selectAllFromNestedWithoutFieldInFrom() throws IOException {
+  public void selectAllFromNestedWithoutFieldInFromm() throws IOException {
     assertNestedFieldQueryResultContainsColumnsAndData("SELECT * FROM %s",
         regularFields, fields("message", "comment"));
   }

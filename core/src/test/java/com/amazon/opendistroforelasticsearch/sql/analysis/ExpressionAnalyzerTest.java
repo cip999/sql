@@ -245,17 +245,6 @@ class ExpressionAnalyzerTest extends AnalyzerTestBase {
   }
 
   @Test
-  public void skip_array_data_type() {
-    SyntaxCheckException exception =
-        assertThrows(SyntaxCheckException.class,
-            () -> analyze(qualifiedName("array_value")));
-    assertEquals(
-        "Identifier [array_value] of type [ARRAY] is not supported yet",
-        exception.getMessage()
-    );
-  }
-
-  @Test
   public void undefined_var_semantic_check_failed() {
     SemanticCheckException exception = assertThrows(SemanticCheckException.class,
         () -> analyze(
@@ -278,6 +267,15 @@ class ExpressionAnalyzerTest extends AnalyzerTestBase {
             .condition(dsl.greater(DSL.ref("integer_value", INTEGER), DSL.literal(1))),
         AstDSL.filteredAggregate("avg", qualifiedName("integer_value"),
             function(">", qualifiedName("integer_value"), intLiteral(1)))
+    );
+  }
+
+  @Test
+  public void nested_identifier() {
+    assertAnalyzeEqual(
+            DSL.nested("struct_value.array_value.subfield",
+                    "struct_value.array_value", INTEGER),
+            AstDSL.unresolvedAttr("struct_value.array_value.subfield")
     );
   }
 
