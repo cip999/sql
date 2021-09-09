@@ -413,9 +413,10 @@ Example 3: Selecting Field of Array Value
 Select deeper level for object fields of array value which returns the first element in the array. For example, because inner field ``accounts.id`` has three values instead of a tuple in this document, the first entry is returned.::
 
     od> source = people | fields accounts, accounts.id;
-    fetched rows / total rows = 1/1
-    +------------+---------------+
-    | accounts   | accounts.id   |
-    |------------+---------------|
-    | {'id': 1}  | 1             |
-    +------------+---------------+
+    fetched rows / total rows = 2/2
+    +-------------+---------------+
+    | accounts    | accounts.id   |
+    |-------------+---------------|
+    | {'id': '1'} | 1             |
+    | {'id': '2'} | 2             |
+    +-------------+---------------+
