@@ -15,7 +15,8 @@
           }
         }
       },
-      "account": {
+      "accounts": {
+        "type": "nested",
         "properties": {
           "id": {
             "type": "keyword"
