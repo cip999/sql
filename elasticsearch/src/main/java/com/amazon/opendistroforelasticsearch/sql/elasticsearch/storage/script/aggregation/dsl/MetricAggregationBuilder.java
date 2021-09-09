@@ -24,13 +24,19 @@ import com.amazon.opendistroforelasticsearch.sql.elasticsearch.storage.serializa
 import com.amazon.opendistroforelasticsearch.sql.expression.Expression;
 import com.amazon.opendistroforelasticsearch.sql.expression.ExpressionNodeVisitor;
 import com.amazon.opendistroforelasticsearch.sql.expression.LiteralExpression;
+import com.amazon.opendistroforelasticsearch.sql.expression.NestedExpression;
 import com.amazon.opendistroforelasticsearch.sql.expression.ReferenceExpression;
 import com.amazon.opendistroforelasticsearch.sql.expression.aggregation.NamedAggregator;
+
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
 import org.elasticsearch.search.aggregations.AggregationBuilder;
 import org.elasticsearch.search.aggregations.AggregationBuilders;
 import org.elasticsearch.search.aggregations.AggregatorFactories;
 import org.elasticsearch.search.aggregations.bucket.filter.FilterAggregationBuilder;
+import org.elasticsearch.search.aggregations.bucket.nested.NestedAggregationBuilder;
 import org.elasticsearch.search.aggregations.support.ValuesSourceAggregationBuilder;
 
 /**
@@ -55,10 +61,21 @@ public class MetricAggregationBuilder
    * @return AggregatorFactories.Builder
    */
   public AggregatorFactories.Builder build(List<NamedAggregator> aggregatorList) {
-    AggregatorFactories.Builder builder = new AggregatorFactories.Builder();
+    Map<String, AggregationBuilder> factories = new HashMap<>();
+
     for (NamedAggregator aggregator : aggregatorList) {
-      builder.addAggregator(aggregator.accept(this, null));
+      AggregationBuilder factory = aggregator.accept(this, null);
+      String name = factory.getName();
+
+      if (factories.containsKey(name)) {
+        factory.getSubAggregations().forEach(sa -> factories.get(name).subAggregation(sa));
+      } else {
+        factories.put(name, factory);
+      }
     }
+
+    AggregatorFactories.Builder builder = new AggregatorFactories.Builder();
+    factories.values().forEach(builder::addAggregator);
     return builder;
   }
 
@@ -69,21 +86,36 @@ public class MetricAggregationBuilder
     Expression condition = node.getDelegated().condition();
     String name = node.getName();
 
+    AggregationBuilder aggregationBuilder;
+
     switch (node.getFunctionName().getFunctionName()) {
       case "avg":
-        return make(AggregationBuilders.avg(name), expression, condition, name);
+        aggregationBuilder = make(AggregationBuilders.avg(name), expression, condition, name);
+        break;
       case "sum":
-        return make(AggregationBuilders.sum(name), expression, condition, name);
+        aggregationBuilder = make(AggregationBuilders.sum(name), expression, condition, name);
+        break;
       case "count":
-        return make(
+        aggregationBuilder = make(
             AggregationBuilders.count(name), replaceStarOrLiteral(expression), condition, name);
+        break;
       case "min":
-        return make(AggregationBuilders.min(name), expression, condition, name);
+        aggregationBuilder = make(AggregationBuilders.min(name), expression, condition, name);
+        break;
       case "max":
-        return make(AggregationBuilders.max(name), expression, condition, name);
+        aggregationBuilder = make(AggregationBuilders.max(name), expression, condition, name);
+        break;
       default:
         throw new IllegalStateException(
-            String.format("unsupported aggregator %s", node.getFunctionName().getFunctionName()));
+            String.format("Unsupported aggregator %s", node.getFunctionName().getFunctionName()));
+    }
+
+    if (expression instanceof NestedExpression) {
+      String nestedPath = ((NestedExpression) expression).getNestedPath();
+      return new NestedAggregationBuilder("NESTED(" + nestedPath + ")", nestedPath)
+              .subAggregation(aggregationBuilder);
+    } else {
+      return aggregationBuilder;
     }
   }
 

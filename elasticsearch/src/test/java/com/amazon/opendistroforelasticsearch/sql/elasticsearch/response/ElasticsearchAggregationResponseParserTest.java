@@ -209,6 +209,19 @@ class ElasticsearchAggregationResponseParserTest {
         entry("gender", "m", "avg", 36.0)));
   }
 
+  @Test
+  public void nested_aggregation_should_pass() {
+    String response = "{\n"
+            +     "    \"nested#nested\" : {\n"
+            +     "      \"doc_count\" : 3,\n"
+            +     "      \"avg#nested\" : {\n"
+            +     "        \"value\" : 37.0\n"
+            +     "      }\n"
+            +     "    }\n"
+            +     "  }";
+    assertThat(parse(response), contains(entry("nested", 37.0)));
+  }
+
   public List<Map<String, Object>> parse(String json) {
     return ElasticsearchAggregationResponseParser.parse(AggregationResponseUtils.fromJson(json));
   }

@@ -32,6 +32,7 @@ import static org.mockito.Mockito.when;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprIntegerValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprTupleValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprValue;
+import com.amazon.opendistroforelasticsearch.sql.data.type.ExprType;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.value.ElasticsearchExprValueFactory;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.mapping.IndexMapping;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.request.ElasticsearchScrollRequest;
@@ -47,6 +48,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import org.apache.lucene.search.TotalHits;
 import org.elasticsearch.action.admin.indices.get.GetIndexResponse;
 import org.elasticsearch.action.search.ClearScrollRequestBuilder;
@@ -181,8 +185,8 @@ class ElasticsearchNodeClientTest {
                 new SearchHit[] {searchHit},
                 new TotalHits(1L, TotalHits.Relation.EQUAL_TO),
                 1.0F));
-    when(searchHit.getSourceAsString()).thenReturn("{\"id\", 1}");
-    when(factory.construct(any())).thenReturn(exprTupleValue);
+    when(factory.construct(any(SearchHit.class), any(String.class), any(ExprType.class)))
+            .thenReturn(Stream.of(exprTupleValue).collect(Collectors.toList()));
 
     // Mock second scroll request followed
     SearchResponse scrollResponse = mock(SearchResponse.class);

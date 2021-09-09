@@ -37,6 +37,8 @@ import org.elasticsearch.search.aggregations.bucket.filter.FilterAggregationBuil
 import org.elasticsearch.search.aggregations.bucket.filter.ParsedFilter;
 import org.elasticsearch.search.aggregations.bucket.histogram.DateHistogramAggregationBuilder;
 import org.elasticsearch.search.aggregations.bucket.histogram.ParsedDateHistogram;
+import org.elasticsearch.search.aggregations.bucket.nested.NestedAggregationBuilder;
+import org.elasticsearch.search.aggregations.bucket.nested.ParsedNested;
 import org.elasticsearch.search.aggregations.bucket.terms.DoubleTerms;
 import org.elasticsearch.search.aggregations.bucket.terms.LongTerms;
 import org.elasticsearch.search.aggregations.bucket.terms.ParsedDoubleTerms;
@@ -76,6 +78,8 @@ public class AggregationResponseUtils {
               (p, c) -> ParsedComposite.fromXContent(p, (String) c))
           .put(FilterAggregationBuilder.NAME,
               (p, c) -> ParsedFilter.fromXContent(p, (String) c))
+          .put(NestedAggregationBuilder.NAME,
+              (p, c) -> ParsedNested.fromXContent(p, (String) c))
           .build()
           .entrySet()
           .stream()

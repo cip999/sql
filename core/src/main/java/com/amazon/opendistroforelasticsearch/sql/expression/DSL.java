@@ -89,6 +89,10 @@ public class DSL {
     return new ReferenceExpression(ref, type);
   }
 
+  public static NestedExpression nested(String ref, String nestedPath, ExprType type) {
+    return new NestedExpression(ref, nestedPath, type);
+  }
+
   /**
    * Wrap a named expression if not yet. The intent is that different languages may use
    * Alias or not when building AST. This caused either named or unnamed expression
