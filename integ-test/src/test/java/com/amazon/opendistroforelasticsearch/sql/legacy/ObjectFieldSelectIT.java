@@ -80,7 +80,7 @@ public class ObjectFieldSelectIT extends SQLIntegTestCase {
   public void testSelectNestedFieldItself() {
     JSONObject response = new JSONObject(query("SELECT projects FROM %s"));
 
-    verifySchema(response, schema("projects", null, "nested"));
+    verifySchema(response, schema("projects", null, "object"));
 
     verifyDataRows(response,
             rows(new JSONArray("["
