@@ -62,26 +62,38 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import java.time.Instant;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
-import lombok.AllArgsConstructor;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import lombok.Setter;
 import org.elasticsearch.common.time.DateFormatters;
+import org.elasticsearch.search.SearchHit;
+import org.elasticsearch.search.SearchHits;
 
 /**
  * Construct ExprValue from Elasticsearch response.
  */
-@AllArgsConstructor
 public class ElasticsearchExprValueFactory {
   /**
    * The Mapping of Field and ExprType.
    */
   @Setter
   private Map<String, ExprType> typeMapping;
+
+  private Integer limit;
 
   private static final String TOP_PATH = "";
 
@@ -109,50 +121,92 @@ public class ElasticsearchExprValueFactory {
           .put(ES_BINARY, c -> new ElasticsearchExprBinaryValue(c.stringValue()))
           .build();
 
+  public ElasticsearchExprValueFactory(Map<String, ExprType> typeMapping) {
+    this(typeMapping, null);
+  }
+
+  public ElasticsearchExprValueFactory(Map<String, ExprType> typeMapping, Integer limit) {
+    this.typeMapping = typeMapping;
+    this.limit = limit;
+  }
+
   /**
    * The struct construction has the following assumption. 1. The field has Elasticsearch Object
    * data type. https://www.elastic.co/guide/en/elasticsearch/reference/current/object.html 2. The
    * deeper field is flattened in the typeMapping. e.g. {"employ", "STRUCT"} {"employ.id",
    * "INTEGER"} {"employ.state", "STRING"}
    */
-  public ExprValue construct(String jsonString) {
+  public List<ExprValue> construct(String jsonString) {
     try {
       return parse(new ElasticsearchJsonContent(OBJECT_MAPPER.readTree(jsonString)), TOP_PATH,
-          STRUCT);
+          STRUCT, null, new HashSet<>());
     } catch (JsonProcessingException e) {
-      throw new IllegalStateException(String.format("invalid json: %s.", jsonString), e);
+      throw new IllegalStateException(String.format("Invalid json: %s", jsonString), e);
     }
   }
 
   /**
-   * Construct ExprValue from field and its value object. Throw exception if trying
+   * Construct ExprValue list from field and its value object. Throw exception if trying
    * to construct from field of unsupported type.
    * Todo, add IP, GeoPoint support after we have function implementation around it.
    *
    * @param field field name
    * @param value value object
-   * @return ExprValue
+   * @return List of ExprValue
    */
-  public ExprValue construct(String field, Object value) {
-    return parse(new ObjectContent(value), field, type(field));
+  public List<ExprValue> construct(String field, Object value) {
+    return parse(new ObjectContent(value), field, type(field), null, new HashSet<>());
   }
 
-  private ExprValue parse(Content content, String field, ExprType type) {
-    if (content.isNull()) {
-      return ExprNullValue.of();
+  /**
+   * Construct ExprValue list from SearchHit.
+   *
+   * @param hit search hit
+   * @param field field name
+   * @param type value object
+   * @return List of ExprValue
+   */
+  public List<ExprValue> construct(SearchHit hit, String field, ExprType type) {
+    String sourceAsString = hit.getSourceAsString();
+    Content content;
+    try {
+      content = new ElasticsearchJsonContent(OBJECT_MAPPER.readTree(sourceAsString));
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException(String.format("Invalid json: %s", sourceAsString), e);
+    }
+
+    Set<String> alreadyProcessed = new HashSet<>();
+    return parse(content, field, type, hit.getInnerHits(), alreadyProcessed);
+  }
+
+  private List<ExprValue> parse(Content content, String field, ExprType type,
+                                Map<String, SearchHits> innerHits, Set<String> alreadyProcessed) {
+    if (alreadyProcessed.contains(field)) {
+      return new ArrayList<>();
     }
 
     if (type == STRUCT) {
-      return parseStruct(content, field);
-    } else if (type == ARRAY) {
-      return parseArray(content, field);
-    } else {
-      if (typeActionMap.containsKey(type)) {
-        return typeActionMap.get(type).apply(content);
+      if (content.isNull() || !content.map().hasNext()) {
+        return Collections.singletonList(ExprNullValue.of());
       } else {
-        throw new IllegalStateException(
-            String.format(
-                "Unsupported type: %s for value: %s.", type.typeName(), content.objectValue()));
+        return parseStruct(content, field, innerHits, alreadyProcessed);
+      }
+    } else {
+      if (content.isNull()) {
+        return Collections.singletonList(ExprNullValue.of());
+      }
+      if (type == ARRAY) {
+        return Collections.singletonList(parseArray(content, field));
+      } else {
+        if (typeActionMap.containsKey(type)) {
+          return Stream.of(typeActionMap.get(type).apply(content)).collect(Collectors.toList());
+        } else {
+          throw new IllegalStateException(
+                  String.format(
+                          "Unsupported type: %s for value: %s",
+                          type.typeName(), content.objectValue()
+                  ));
+        }
       }
     }
   }
@@ -161,7 +215,7 @@ public class ElasticsearchExprValueFactory {
     if (typeMapping.containsKey(field)) {
       return typeMapping.get(field);
     } else {
-      throw new IllegalStateException(String.format("No type found for field: %s.", field));
+      throw new IllegalStateException(String.format("No type found for field: %s", field));
     }
   }
 
@@ -194,27 +248,102 @@ public class ElasticsearchExprValueFactory {
     }
   }
 
-  private ExprValue parseStruct(Content content, String prefix) {
-    LinkedHashMap<String, ExprValue> result = new LinkedHashMap<>();
-    content.map().forEachRemaining(entry -> result.put(entry.getKey(),
-        parse(entry.getValue(),
-            makeField(prefix, entry.getKey()),
-            type(makeField(prefix, entry.getKey())))));
-    return new ExprTupleValue(result);
+  private List<ExprValue> parseStruct(Content content, String field,
+                                      Map<String, SearchHits> innerHits,
+                                      Set<String> alreadyProcessed) {
+    if (innerHits == null) {
+      innerHits = new HashMap<>();
+    }
+
+    List<ExprValue> result = Stream.of(new ExprTupleValue(new LinkedHashMap<>()))
+            .collect(Collectors.toList());
+    Map<String, List<ExprValue>> innerResults = new HashMap<>();
+    Integer initialLimit = limit;
+    Integer currentLimit = limit;
+
+    for (String key : innerHits.keySet()) {
+      List<ExprValue> innerResult = new ArrayList<>();
+      alreadyProcessed.add(key);
+      for (SearchHit hit : innerHits.get(key).getHits()) {
+        innerResult.addAll(construct(hit, makeField(field, key), STRUCT));
+      }
+      innerResults.put(key, innerResult);
+      currentLimit = ratioCeil(currentLimit, innerResult.size());
+      limit = currentLimit;
+    }
+
+    limit = null;
+    Iterator<Map.Entry<String, Content>> it = content.map();
+    while (it.hasNext()) {
+      Map.Entry<String, Content> entry = it.next();
+      List<ExprValue> innerResult = parse(entry.getValue(), makeField(field, entry.getKey()),
+              type(makeField(field, entry.getKey())), null, alreadyProcessed);
+      if (!innerResult.isEmpty()) {
+        result = cartesianProduct(entry.getKey(), result, innerResult);
+      }
+    }
+
+    for (String key : innerResults.keySet()) {
+      limit = initialLimit;
+      result = cartesianProduct(key, result, innerResults.get(key));
+    }
+
+    return result.stream().filter(v -> !v.tupleValue().isEmpty()).collect(Collectors.toList());
   }
 
-  /**
-   * Todo. ARRAY is not support now. In Elasticsearch, there is no dedicated array data type.
-   * https://www.elastic.co/guide/en/elasticsearch/reference/current/array.html. The similar data
-   * type is nested, but it can only allow a list of objects.
-   */
-  private ExprValue parseArray(Content content, String prefix) {
+  private List<ExprValue> cartesianProduct(String path, List<ExprValue> acceptor,
+                                           List<ExprValue> toMerge) {
     List<ExprValue> result = new ArrayList<>();
-    content.array().forEachRemaining(v -> result.add(parse(v, prefix, STRUCT)));
+    String[] paths = path.split("\\.");
+
+    for (ExprValue acceptorExpr : acceptor) {
+      for (ExprValue mergeExpr : toMerge) {
+        ExprTupleValue union = ((ExprTupleValue) acceptorExpr).deepCopy();
+        ExprTupleValue current = union;
+        for (int i = 0; i < paths.length - 1; i++) {
+          String p = paths[i];
+          if (!current.tupleValue().containsKey(p)) {
+            current.tupleValue().put(p, new ExprTupleValue(new LinkedHashMap<>()));
+          }
+          current = (ExprTupleValue) current.tupleValue().get(p);
+        }
+        current.tupleValue().put(paths[paths.length - 1], mergeExpr);
+        result.add(union);
+        if (limit != null) {
+          --limit;
+        }
+        if (limitReached()) {
+          break;
+        }
+      }
+      if (limitReached()) {
+        break;
+      }
+    }
+
+    return result;
+  }
+
+  private ExprCollectionValue parseArray(Content content, String field) {
+    List<ExprValue> result = new ArrayList<>();
+    content.array().forEachRemaining(v -> result.addAll(
+            parse(v, field, STRUCT, null, Collections.emptySet())
+    ));
     return new ExprCollectionValue(result);
   }
 
   private String makeField(String path, String field) {
     return path.equalsIgnoreCase(TOP_PATH) ? field : String.join(".", path, field);
+  }
+
+  private boolean limitReached() {
+    return limit != null && limit == 0;
+  }
+
+  private Integer ratioCeil(Integer a, Integer b) {
+    if (a == null) {
+      return null;
+    }
+    return (a + b - 1) / b;
   }
 }

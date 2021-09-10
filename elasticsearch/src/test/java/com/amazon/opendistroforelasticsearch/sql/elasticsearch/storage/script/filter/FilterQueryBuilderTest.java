@@ -25,6 +25,8 @@ import static com.amazon.opendistroforelasticsearch.sql.data.type.ExprCoreType.T
 import static com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.type.ElasticsearchDataType.ES_TEXT_KEYWORD;
 import static com.amazon.opendistroforelasticsearch.sql.expression.DSL.literal;
 import static com.amazon.opendistroforelasticsearch.sql.expression.DSL.ref;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -32,6 +34,7 @@ import static org.mockito.Mockito.doAnswer;
 import com.amazon.opendistroforelasticsearch.sql.common.utils.StringUtils;
 import com.amazon.opendistroforelasticsearch.sql.data.type.ExprType;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.storage.serialization.ExpressionSerializer;
+import com.amazon.opendistroforelasticsearch.sql.exception.ExpressionEvaluationException;
 import com.amazon.opendistroforelasticsearch.sql.expression.DSL;
 import com.amazon.opendistroforelasticsearch.sql.expression.Expression;
 import com.amazon.opendistroforelasticsearch.sql.expression.FunctionExpression;
@@ -312,6 +315,41 @@ class FilterQueryBuilderTest {
         buildQuery(
             dsl.like(
                 ref("name", ES_TEXT_KEYWORD), literal("John%"))));
+  }
+
+  @Test
+  void multiple_nested_clauses() {
+    String queryString = buildQuery(
+            dsl.and(
+                    dsl.less(
+                            DSL.nested("path.firstField", "path", INTEGER),
+                            literal(2)),
+                    dsl.equal(
+                            DSL.nested("path.secondField", "path", STRING),
+                            literal("John")
+                    )
+            )
+    );
+    assertTrue(queryString.contains("\"nested\""));
+  }
+
+  @Test
+  void multiple_nested_paths_should_throw_exception() {
+    ExpressionEvaluationException exception = assertThrows(
+            ExpressionEvaluationException.class, () -> buildQuery(
+                    dsl.and(
+                            dsl.less(
+                                    DSL.nested("firstPath.firstField", "firstPath", INTEGER),
+                                    literal(2)),
+                            dsl.equal(
+                                    DSL.nested("secondPath.secondField", "secondPath", STRING),
+                                    literal("John")
+                            )
+                    )
+            )
+    );
+    assertEquals("Cannot have two or more distinct nested paths in same filter clause",
+            exception.getMessage());
   }
 
   private static void assertJsonEquals(String expected, String actual) {

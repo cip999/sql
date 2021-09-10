@@ -16,13 +16,17 @@
 
 package com.amazon.opendistroforelasticsearch.sql.elasticsearch.response;
 
+import static com.amazon.opendistroforelasticsearch.sql.data.type.ExprCoreType.STRUCT;
+
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprTupleValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprValue;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.value.ElasticsearchExprValueFactory;
 import com.google.common.collect.ImmutableMap;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
+
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import org.elasticsearch.action.search.SearchResponse;
@@ -95,13 +99,17 @@ public class ElasticsearchResponse implements Iterable<ExprValue> {
       return ElasticsearchAggregationResponseParser.parse(aggregations).stream().map(entry -> {
         ImmutableMap.Builder<String, ExprValue> builder = new ImmutableMap.Builder<>();
         for (Map.Entry<String, Object> value : entry.entrySet()) {
-          builder.put(value.getKey(), exprValueFactory.construct(value.getKey(), value.getValue()));
+          for (ExprValue v : exprValueFactory.construct(value.getKey(), value.getValue())) {
+            builder.put(value.getKey(), v);
+          }
         }
         return (ExprValue) ExprTupleValue.fromExprValueMap(builder.build());
       }).iterator();
     } else {
       return Arrays.stream(hits.getHits())
-          .map(hit -> (ExprValue) exprValueFactory.construct(hit.getSourceAsString())).iterator();
+                      .map(hit -> exprValueFactory.construct(hit, "", STRUCT))
+                      .flatMap(Collection::stream)
+                      .iterator();
     }
   }
 }

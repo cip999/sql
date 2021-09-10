@@ -22,6 +22,7 @@ import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.lessThan;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.common.xcontent.LoggingDeprecationHandler;
@@ -144,7 +145,7 @@ public class JSONRequestIT extends SQLIntegTestCase {
         TestsConstants.TEST_INDEX_NESTED_TYPE, likesToCompare, fieldToCompare));
     SearchHit[] hits = response.getHits();
     for (SearchHit hit : hits) {
-      int likes = (int) ((Map) hit.getSourceAsMap().get("comment")).get("likes");
+      int likes = (int) ((Map) ((List) hit.getSourceAsMap().get("comment")).get(0)).get("likes");
       String someField = hit.getSourceAsMap().get("someField").toString();
       assertThat(likes, lessThan(likesToCompare));
       assertThat(someField, equalTo(fieldToCompare));
@@ -184,8 +185,8 @@ public class JSONRequestIT extends SQLIntegTestCase {
         TestsConstants.TEST_INDEX_NESTED_TYPE, likesToCompare, dataToCompare));
     SearchHit[] hits = response.getHits();
     for (SearchHit hit : hits) {
-      int likes = (int) ((Map) hit.getSourceAsMap().get("comment")).get("likes");
-      String data = ((Map) hit.getSourceAsMap().get("comment")).get("data").toString();
+      int likes = (int) ((Map) ((List) hit.getSourceAsMap().get("comment")).get(0)).get("likes");
+      String data = ((Map) ((List) hit.getSourceAsMap().get("comment")).get(0)).get("data").toString();
       assertThat(likes, greaterThan(likesToCompare));
       assertThat(data, anyOf(equalTo(dataToCompare), equalTo("[aa, bb]")));
     }
