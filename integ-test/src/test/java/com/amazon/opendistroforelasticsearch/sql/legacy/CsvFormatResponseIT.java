@@ -116,32 +116,12 @@ public class CsvFormatResponseIT extends SQLIntegTestCase {
     final String result = executeQueryWithStringOutput(query);
 
     final String expectedMyNum = "\"[3, 4]\"";
-    final String expectedComment = "\"{data=[aa, bb], likes=10}\"";
+    final String expectedComment = "\"[{data=[aa, bb], likes=10}]\"";
     final String expectedMessage = "\"[{dayOfWeek=6, author=zz, info=zz}]\"";
 
     Assert.assertThat(result, containsString(expectedMyNum));
     Assert.assertThat(result, containsString(expectedComment));
     Assert.assertThat(result, containsString(expectedMessage));
-  }
-
-  @Test
-  public void arraysAreQuotedInFlatMode() throws IOException {
-    Assume.assumeFalse(isNewQueryEngineEabled());
-    setFlatOption(true);
-
-    final String query = String.format(Locale.ROOT, "SELECT * FROM %s WHERE _id = 5",
-        TEST_INDEX_NESTED_TYPE);
-    final String result = executeQueryWithStringOutput(query);
-
-    final String expectedMyNum = "\"[3, 4]\"";
-    final String expectedCommentData = "\"[aa, bb]\"";
-    final String expectedMessage = "\"[{dayOfWeek=6, author=zz, info=zz}]\"";
-
-    Assert.assertThat(result, containsString(expectedMyNum));
-    Assert.assertThat(result, containsString(expectedCommentData));
-    Assert.assertThat(result, containsString(expectedMessage));
-
-    setFlatOption(false);
   }
 
   @Test
