@@ -83,9 +83,10 @@ public class ObjectFieldSelectIT extends SQLIntegTestCase {
     verifySchema(response, schema("projects", null, "nested"));
 
     verifyDataRows(response,
-            rows(new JSONObject("{\"name\": \"AWS Redshift Spectrum querying\"}")),
-            rows(new JSONObject("{\"name\": \"AWS Redshift security\"}")),
-            rows(new JSONObject("{\"name\": \"AWS Aurora security\"}"))
+            rows(new JSONArray("["
+                    + "{\"name\": \"AWS Redshift Spectrum querying\"}, "
+                    + "{\"name\": \"AWS Redshift security\"}, "
+                    + "{\"name\": \"AWS Aurora security\"}]"))
     );
   }
 

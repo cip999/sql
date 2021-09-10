@@ -145,55 +145,59 @@ public class ElasticsearchIndex implements Table {
             .collect(Collectors.toList()));
       }
 
-      if (null != node.getFilter()) {
-        FilterQueryBuilder queryBuilder = new FilterQueryBuilder(new DefaultExpressionSerializer());
-        QueryBuilder query = queryBuilder.build(node.getFilter());
-        if (query instanceof NestedQueryBuilder
-                || (node.getProjectList() != null
-                && node.getProjectList().stream().anyMatch(v -> v instanceof NestedExpression))) {
-          Map<String, NestedQueryBuilder> nestedQueries = new HashMap<>();
-          if (query instanceof NestedQueryBuilder) {
-            nestedQueries.put(
-                    ((NestedQueryBuilder) query).innerHit().getName(),
-                    (NestedQueryBuilder) query);
-          }
-          node.getProjectList().stream()
-                  .filter(v -> v instanceof NestedExpression)
-                  .forEach(v -> {
-                    NestedExpression nestedExpr = (NestedExpression) v;
-                    String nestedPath = nestedExpr.getNestedPath();
-                    if (!nestedQueries.containsKey(nestedPath)) {
-                      nestedQueries.put(nestedPath,
-                              new NestedQueryBuilder(
-                                      nestedPath, new MatchAllQueryBuilder(), None)
-                                      .innerHit(new InnerHitBuilder().setName(nestedPath)
-                                      .setFetchSourceContext(
-                                              new FetchSourceContext(
-                                                      true,
-                                                      new String[0],
-                                                      new String[0]))
-                              ));
-                    }
-                    Set<String> includes = new HashSet<>(
-                            Arrays.asList(nestedQueries.get(nestedPath)
-                                    .innerHit().getFetchSourceContext().includes()
-                            ));
-                    includes.add(v.getAttr());
-                    nestedQueries.get(nestedPath).innerHit().setFetchSourceContext(
-                            new FetchSourceContext(true,
-                                    includes.toArray(new String[0]),
-                                    new String[0])
-                    );
-                  });
-          BoolQueryBuilder newQuery = new BoolQueryBuilder();
-          if (!(query instanceof NestedQueryBuilder)) {
-            newQuery.must(query);
-          }
-          nestedQueries.values().forEach(newQuery::must);
-          query = newQuery;
-        }
-        context.pushDown(query);
+      FilterQueryBuilder queryBuilder = new FilterQueryBuilder(new DefaultExpressionSerializer());
+      QueryBuilder query;
+      if (null == node.getFilter()) {
+        query = new BoolQueryBuilder().filter(new MatchAllQueryBuilder());
+      } else {
+        query = queryBuilder.build(node.getFilter());
       }
+
+      if (query instanceof NestedQueryBuilder
+              || (node.getProjectList() != null
+              && node.getProjectList().stream().anyMatch(v -> v instanceof NestedExpression))) {
+        Map<String, NestedQueryBuilder> nestedQueries = new HashMap<>();
+        if (query instanceof NestedQueryBuilder) {
+          nestedQueries.put(
+                  ((NestedQueryBuilder) query).innerHit().getName(),
+                  (NestedQueryBuilder) query);
+        }
+        node.getProjectList().stream()
+                .filter(v -> v instanceof NestedExpression)
+                .forEach(v -> {
+                  NestedExpression nestedExpr = (NestedExpression) v;
+                  String nestedPath = nestedExpr.getNestedPath();
+                  if (!nestedQueries.containsKey(nestedPath)) {
+                    nestedQueries.put(nestedPath,
+                            new NestedQueryBuilder(
+                                    nestedPath, new MatchAllQueryBuilder(), None)
+                                    .innerHit(new InnerHitBuilder().setName(nestedPath)
+                                    .setFetchSourceContext(
+                                            new FetchSourceContext(
+                                                    true,
+                                                    new String[0],
+                                                    new String[0]))
+                            ));
+                  }
+                  Set<String> includes = new HashSet<>(
+                          Arrays.asList(nestedQueries.get(nestedPath)
+                                  .innerHit().getFetchSourceContext().includes()
+                          ));
+                  includes.add(v.getAttr());
+                  nestedQueries.get(nestedPath).innerHit().setFetchSourceContext(
+                          new FetchSourceContext(true,
+                                  includes.toArray(new String[0]),
+                                  new String[0])
+                  );
+                });
+        BoolQueryBuilder newQuery = new BoolQueryBuilder();
+        if (!(query instanceof NestedQueryBuilder)) {
+          newQuery.must(query);
+        }
+        nestedQueries.values().forEach(newQuery::must);
+        query = newQuery;
+      }
+      context.pushDown(query);
 
       if (node.getLimit() != null) {
         context.pushDownLimit(node.getLimit(), node.getOffset());

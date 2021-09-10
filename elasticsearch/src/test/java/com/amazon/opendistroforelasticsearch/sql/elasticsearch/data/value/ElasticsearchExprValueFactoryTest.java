@@ -50,6 +50,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.amazon.opendistroforelasticsearch.sql.data.model.ExprCollectionValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprDateValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprDatetimeValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprNullValue;
@@ -118,11 +119,6 @@ class ElasticsearchExprValueFactoryTest {
     assertEquals(nullValue(), tupleValue("{\"intV\":null}").get("intV"));
     assertEquals(nullValue(), constructFromObject("intV",  null));
     assertTrue(new ElasticsearchJsonContent(null).isNull());
-  }
-
-  @Test
-  public void constructNullArrayValue() {
-    assertNull(tupleValue("{\"arrayV\":[]}"));
   }
 
   @Test
@@ -246,22 +242,24 @@ class ElasticsearchExprValueFactoryTest {
   @Test
   public void constructArray() {
     assertEquals(
-        new ExprTupleValue(
-            new LinkedHashMap<String, ExprValue>() {
-              {
-                put("info", stringValue("zz"));
-                put("author", stringValue("au"));
-              }
-            }),
+            new ExprCollectionValue(ImmutableList.of(new ExprTupleValue(
+                  new LinkedHashMap<String, ExprValue>() {
+                    {
+                      put("info", stringValue("zz"));
+                      put("author", stringValue("au"));
+                    }
+                  })
+            )),
         tupleValue("{\"arrayV\":[{\"info\":\"zz\",\"author\":\"au\"}]}").get("arrayV"));
     assertEquals(
-        new ExprTupleValue(
-            new LinkedHashMap<String, ExprValue>() {
-              {
-                put("info", stringValue("zz"));
-                put("author", stringValue("au"));
-              }
-            }),
+            new ExprCollectionValue(ImmutableList.of(new ExprTupleValue(
+                  new LinkedHashMap<String, ExprValue>() {
+                    {
+                      put("info", stringValue("zz"));
+                      put("author", stringValue("au"));
+                    }
+                  })
+            )),
         constructFromObject("arrayV", ImmutableList.of(
             ImmutableMap.of("info", "zz", "author", "au"))));
   }
@@ -381,29 +379,33 @@ class ElasticsearchExprValueFactoryTest {
   @Test
   public void constructHitWithInnerHitsAndLimit() {
     ElasticsearchExprValueFactory exprValueFactory = new ElasticsearchExprValueFactory(
-            MAPPING, 1
+            MAPPING, 2
     );
 
     SearchHit firstInnerHit = new SearchHit(1)
             .sourceRef(new BytesArray("{\"name\": \"John\", \"age\": 22}"));
     SearchHit secondInnerHit = new SearchHit(1)
             .sourceRef(new BytesArray("{\"name\": \"Mark\", \"age\": 67}"));
+    SearchHit thirdInnerHit = new SearchHit(1)
+            .sourceRef(new BytesArray("{\"name\": \"Eve\", \"age\": 12}"));
     SearchHit hit = new SearchHit(1)
             .sourceRef(new BytesArray("{\"doubleV\": 2.3, \"book\": {\"author\": ["
                     + "{\"name\": \"John\", \"age\": 22}, "
-                    + "{\"name\": \"Mark\", \"age\": 67}]}}"));
+                    + "{\"name\": \"Mark\", \"age\": 67}, "
+                    + "{\"name\": \"Eve\", \"age\": 12}]}}"));
     hit.setInnerHits(Map.of("book.author",
-            new SearchHits(new SearchHit[]{firstInnerHit, secondInnerHit},
-                    new TotalHits(2, TotalHits.Relation.EQUAL_TO), 1f)));
+            new SearchHits(new SearchHit[]{firstInnerHit, secondInnerHit, thirdInnerHit},
+                    new TotalHits(3, TotalHits.Relation.EQUAL_TO), 1f)));
 
     List<ExprValue> construct = constructFromHit(hit, exprValueFactory);
 
-    assertEquals(1, construct.size());
+    assertEquals(2, construct.size());
   }
 
   @Test
-  public void constructEmptyArray() {
-    assertNull(tupleValue("{\"arrayV\": []}"));
+  public void constructEmptyOrNullArray() {
+    assertEquals(ExprNullValue.of(), tupleValue("{\"arrayV\": []}").get("arrayV"));
+    assertEquals(ExprNullValue.of(), tupleValue("{\"arrayV\": null}").get("arrayV"));
   }
 
   @Test

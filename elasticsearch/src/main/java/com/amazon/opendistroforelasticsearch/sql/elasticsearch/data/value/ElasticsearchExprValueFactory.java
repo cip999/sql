@@ -42,6 +42,7 @@ import static com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.value
 
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprBooleanValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprByteValue;
+import com.amazon.opendistroforelasticsearch.sql.data.model.ExprCollectionValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprDateValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprDatetimeValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprDoubleValue;
@@ -189,7 +190,7 @@ public class ElasticsearchExprValueFactory {
 
   private List<ExprValue> parse(Content content, String field, ExprType type,
                                 Map<String, SearchHits> innerHits, Set<String> alreadyProcessed) {
-    if (alreadyProcessed.contains(field) || limitReached()) {
+    if (alreadyProcessed.contains(field)) {
       return new ArrayList<>();
     }
 
@@ -199,26 +200,22 @@ public class ElasticsearchExprValueFactory {
       } else {
         return parseStruct(content, field, innerHits, alreadyProcessed);
       }
-    } else if (type == ARRAY) {
-      if (content.isNull()) {
-        return new ArrayList<>();
-      } else {
-        return parseArray(content, field, alreadyProcessed);
-      }
     } else {
-      if (typeActionMap.containsKey(type)) {
-        if (limit != null) {
-          --limit;
-        }
-        if (content.isNull()) {
-          return Collections.singletonList(ExprNullValue.of());
-        } else {
-          return Stream.of(typeActionMap.get(type).apply(content)).collect(Collectors.toList());
-        }
+      if (content.isNull()) {
+        return Collections.singletonList(ExprNullValue.of());
+      }
+      if (type == ARRAY) {
+        return Collections.singletonList(parseArray(content, field));
       } else {
-        throw new IllegalStateException(
-            String.format(
-                "Unsupported type: %s for value: %s", type.typeName(), content.objectValue()));
+        if (typeActionMap.containsKey(type)) {
+          return Stream.of(typeActionMap.get(type).apply(content)).collect(Collectors.toList());
+        } else {
+          throw new IllegalStateException(
+                  String.format(
+                          "Unsupported type: %s for value: %s",
+                          type.typeName(), content.objectValue()
+                  ));
+        }
       }
     }
   }
@@ -283,17 +280,14 @@ public class ElasticsearchExprValueFactory {
       limit = currentLimit;
     }
 
-    Integer intermediateLimit = currentLimit;
+    limit = null;
     Iterator<Map.Entry<String, Content>> it = content.map();
     while (it.hasNext()) {
-      limit = currentLimit;
       Map.Entry<String, Content> entry = it.next();
       List<ExprValue> innerResult = parse(entry.getValue(), makeField(field, entry.getKey()),
               type(makeField(field, entry.getKey())), null, alreadyProcessed);
       if (!innerResult.isEmpty()) {
-        limit = intermediateLimit;
         result = cartesianProduct(entry.getKey(), result, innerResult);
-        currentLimit = ratioCeil(currentLimit, innerResult.size());
       }
     }
 
@@ -338,17 +332,12 @@ public class ElasticsearchExprValueFactory {
     return result;
   }
 
-  private List<ExprValue> parseArray(Content content, String field, Set<String> alreadyProcessed) {
+  private ExprCollectionValue parseArray(Content content, String field) {
     List<ExprValue> result = new ArrayList<>();
-    Set<String> alreadyProcessedTemp = new HashSet<>();
-    Iterator<? extends Content> it = content.array();
-    while (it.hasNext()) {
-      alreadyProcessedTemp = new HashSet<>(alreadyProcessed);
-      result.addAll(parse(it.next(), field, STRUCT, null, alreadyProcessedTemp));
-    }
-    alreadyProcessed.clear();
-    alreadyProcessed.addAll(alreadyProcessedTemp);
-    return result;
+    content.array().forEachRemaining(v -> result.addAll(
+            parse(v, field, STRUCT, null, Collections.emptySet())
+    ));
+    return new ExprCollectionValue(result);
   }
 
   private String makeField(String path, String field) {
