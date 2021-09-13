@@ -35,6 +35,7 @@ import static com.amazon.opendistroforelasticsearch.sql.sql.antlr.parser.OpenDis
 import static com.amazon.opendistroforelasticsearch.sql.sql.antlr.parser.OpenDistroSQLParser.IsNullPredicateContext;
 import static com.amazon.opendistroforelasticsearch.sql.sql.antlr.parser.OpenDistroSQLParser.LikePredicateContext;
 import static com.amazon.opendistroforelasticsearch.sql.sql.antlr.parser.OpenDistroSQLParser.MathExpressionAtomContext;
+import static com.amazon.opendistroforelasticsearch.sql.sql.antlr.parser.OpenDistroSQLParser.NestedAtomContext;
 import static com.amazon.opendistroforelasticsearch.sql.sql.antlr.parser.OpenDistroSQLParser.NotExpressionContext;
 import static com.amazon.opendistroforelasticsearch.sql.sql.antlr.parser.OpenDistroSQLParser.NullLiteralContext;
 import static com.amazon.opendistroforelasticsearch.sql.sql.antlr.parser.OpenDistroSQLParser.OverClauseContext;
@@ -63,6 +64,7 @@ import com.amazon.opendistroforelasticsearch.sql.ast.expression.Cast;
 import com.amazon.opendistroforelasticsearch.sql.ast.expression.Function;
 import com.amazon.opendistroforelasticsearch.sql.ast.expression.Interval;
 import com.amazon.opendistroforelasticsearch.sql.ast.expression.IntervalUnit;
+import com.amazon.opendistroforelasticsearch.sql.ast.expression.Literal;
 import com.amazon.opendistroforelasticsearch.sql.ast.expression.Not;
 import com.amazon.opendistroforelasticsearch.sql.ast.expression.Or;
 import com.amazon.opendistroforelasticsearch.sql.ast.expression.QualifiedName;
@@ -70,7 +72,10 @@ import com.amazon.opendistroforelasticsearch.sql.ast.expression.UnresolvedExpres
 import com.amazon.opendistroforelasticsearch.sql.ast.expression.When;
 import com.amazon.opendistroforelasticsearch.sql.ast.expression.WindowFunction;
 import com.amazon.opendistroforelasticsearch.sql.ast.tree.Sort.SortOption;
+import com.amazon.opendistroforelasticsearch.sql.common.antlr.SyntaxCheckException;
 import com.amazon.opendistroforelasticsearch.sql.common.utils.StringUtils;
+import com.amazon.opendistroforelasticsearch.sql.expression.LiteralExpression;
+import com.amazon.opendistroforelasticsearch.sql.expression.ReferenceExpression;
 import com.amazon.opendistroforelasticsearch.sql.sql.antlr.parser.OpenDistroSQLParser;
 import com.amazon.opendistroforelasticsearch.sql.sql.antlr.parser.OpenDistroSQLParser.AndExpressionContext;
 import com.amazon.opendistroforelasticsearch.sql.sql.antlr.parser.OpenDistroSQLParser.ColumnNameContext;
@@ -88,6 +93,7 @@ import java.util.stream.Collectors;
 import org.antlr.v4.runtime.RuleContext;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
+import org.springframework.expression.spel.ast.StringLiteral;
 
 /**
  * Expression builder to parse text to expression in AST.
@@ -124,7 +130,32 @@ public class AstExpressionBuilder extends OpenDistroSQLParserBaseVisitor<Unresol
 
   @Override
   public UnresolvedExpression visitNestedExpressionAtom(NestedExpressionAtomContext ctx) {
-    return visit(ctx.expression()); // Discard parenthesis around
+    return visit(ctx.expression());
+  }
+
+  @Override
+  public UnresolvedExpression visitNestedAtom(
+          NestedAtomContext ctx) {
+    QualifiedName firstArgument = (QualifiedName) visit(ctx.columnName());
+    if (firstArgument.getParts().size() < 2) {
+      throw new SyntaxCheckException(
+              "First argument of nested atom must contain at least two parts");
+    }
+    if (ctx.nestedAtomSecondArgument() != null) {
+      UnresolvedExpression secondArgument = visit(ctx.nestedAtomSecondArgument());
+      String[] parts = (secondArgument instanceof QualifiedName
+              ? ((QualifiedName) secondArgument).getParts().toArray(new String[0])
+              : ((String) ((Literal) secondArgument).getValue()).split("\\."));
+      for (int i = 0; i < parts.length; i++) {
+        if (i >= firstArgument.getParts().size() - 1
+                || !parts[i].equals(firstArgument.getParts().get(i))) {
+          throw new SyntaxCheckException(
+                  "Second argument of nested atom must be a proper prefix of first argument"
+          );
+        }
+      }
+    }
+    return firstArgument;
   }
 
   @Override
@@ -208,6 +239,13 @@ public class AstExpressionBuilder extends OpenDistroSQLParserBaseVisitor<Unresol
 
   @Override
   public UnresolvedExpression visitFilterClause(OpenDistroSQLParser.FilterClauseContext ctx) {
+    return visit(ctx.expression());
+  }
+
+  @Override
+  public UnresolvedExpression visitNestedExpression(
+          OpenDistroSQLParser.NestedExpressionContext ctx
+  ) {
     return visit(ctx.expression());
   }
 
