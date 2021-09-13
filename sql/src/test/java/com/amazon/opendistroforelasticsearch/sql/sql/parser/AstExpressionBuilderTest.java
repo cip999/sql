@@ -39,6 +39,8 @@ import static com.amazon.opendistroforelasticsearch.sql.ast.tree.Sort.NullOrder.
 import static com.amazon.opendistroforelasticsearch.sql.ast.tree.Sort.SortOrder.ASC;
 import static com.amazon.opendistroforelasticsearch.sql.ast.tree.Sort.SortOrder.DESC;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.amazon.opendistroforelasticsearch.sql.ast.Node;
 import com.amazon.opendistroforelasticsearch.sql.ast.dsl.AstDSL;
@@ -46,6 +48,7 @@ import com.amazon.opendistroforelasticsearch.sql.ast.expression.DataType;
 import com.amazon.opendistroforelasticsearch.sql.ast.tree.Sort.SortOption;
 import com.amazon.opendistroforelasticsearch.sql.common.antlr.CaseInsensitiveCharStream;
 import com.amazon.opendistroforelasticsearch.sql.common.antlr.SyntaxAnalysisErrorListener;
+import com.amazon.opendistroforelasticsearch.sql.common.antlr.SyntaxCheckException;
 import com.amazon.opendistroforelasticsearch.sql.sql.antlr.parser.OpenDistroSQLLexer;
 import com.amazon.opendistroforelasticsearch.sql.sql.antlr.parser.OpenDistroSQLParser;
 import com.google.common.collect.ImmutableList;
@@ -396,6 +399,42 @@ class AstExpressionBuilderTest {
         AstDSL.filteredAggregate("avg", qualifiedName("age"),
             function(">", qualifiedName("age"), intLiteral(20))),
         buildExprAst("avg(age) filter(where age > 20)")
+    );
+  }
+
+  @Test
+  public void canBuildNestedIdentifier() {
+    Node nestedIdentifier = AstDSL.qualifiedName("comments", "likes");
+    assertEquals(nestedIdentifier, buildExprAst("nested(comments.likes)"));
+    assertEquals(nestedIdentifier, buildExprAst("nested(comments.likes, comments)"));
+    assertEquals(nestedIdentifier, buildExprAst("nested(comments.likes, 'comments')"));
+  }
+
+  @Test
+  public void cannotBuildNestedIdentifierWithWrongSyntax() {
+    SyntaxCheckException e = assertThrows(
+            SyntaxCheckException.class, () -> buildExprAst("nested(comments)")
+    );
+    assertEquals("First argument of nested atom must contain at least two parts", e.getMessage());
+
+    e = assertThrows(
+            SyntaxCheckException.class, () -> buildExprAst("nested(comments.likes, comments.likes)")
+    );
+    assertEquals("Second argument of nested atom must be a proper prefix of first argument",
+            e.getMessage());
+
+    e = assertThrows(
+            SyntaxCheckException.class, () -> buildExprAst("nested(comments.likes, messages)")
+    );
+    assertEquals("Second argument of nested atom must be a proper prefix of first argument",
+            e.getMessage());
+  }
+
+  @Test
+  public void canBuildNestedExpression() {
+    assertEquals(
+            AstDSL.function(">", AstDSL.qualifiedName("comments", "likes"), intLiteral(10)),
+            buildExprAst("nested(comments, comments.likes > 10)")
     );
   }
 
