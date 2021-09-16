@@ -32,6 +32,7 @@ import com.amazon.opendistroforelasticsearch.sql.elasticsearch.storage.script.fi
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.storage.script.sort.SortQueryBuilder;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.storage.serialization.DefaultExpressionSerializer;
 import com.amazon.opendistroforelasticsearch.sql.expression.NestedExpression;
+import com.amazon.opendistroforelasticsearch.sql.expression.ReferenceExpression;
 import com.amazon.opendistroforelasticsearch.sql.planner.DefaultImplementor;
 import com.amazon.opendistroforelasticsearch.sql.planner.logical.LogicalPlan;
 import com.amazon.opendistroforelasticsearch.sql.planner.logical.LogicalRelation;
@@ -41,6 +42,7 @@ import com.google.common.annotations.VisibleForTesting;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -57,6 +59,7 @@ import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.search.aggregations.AggregationBuilder;
 import org.elasticsearch.search.aggregations.bucket.composite.CompositeAggregationBuilder;
 import org.elasticsearch.search.aggregations.bucket.filter.FilterAggregationBuilder;
+import org.elasticsearch.search.aggregations.bucket.nested.Nested;
 import org.elasticsearch.search.aggregations.bucket.nested.NestedAggregationBuilder;
 import org.elasticsearch.search.fetch.subphase.FetchSourceContext;
 
@@ -145,58 +148,21 @@ public class ElasticsearchIndex implements Table {
             .collect(Collectors.toList()));
       }
 
-      FilterQueryBuilder queryBuilder = new FilterQueryBuilder(new DefaultExpressionSerializer());
       QueryBuilder query;
+      Set<ReferenceExpression> projectList = (node.getProjectList() != null
+              ? new HashSet<>(node.getProjectList()) : new HashSet<>());
+      Set<ReferenceExpression> unconsumedProjects;
       if (null == node.getFilter()) {
-        query = new BoolQueryBuilder().filter(new MatchAllQueryBuilder());
+        query = new MatchAllQueryBuilder();
+        unconsumedProjects = projectList;
       } else {
+        FilterQueryBuilder queryBuilder = new FilterQueryBuilder(
+                new DefaultExpressionSerializer(), projectList
+        );
         query = queryBuilder.build(node.getFilter());
+        unconsumedProjects = queryBuilder.getProjectList();
       }
-
-      if (query instanceof NestedQueryBuilder
-              || (node.getProjectList() != null
-              && node.getProjectList().stream().anyMatch(v -> v instanceof NestedExpression))) {
-        Map<String, NestedQueryBuilder> nestedQueries = new HashMap<>();
-        if (query instanceof NestedQueryBuilder) {
-          nestedQueries.put(
-                  ((NestedQueryBuilder) query).innerHit().getName(),
-                  (NestedQueryBuilder) query);
-        }
-        node.getProjectList().stream()
-                .filter(v -> v instanceof NestedExpression)
-                .forEach(v -> {
-                  NestedExpression nestedExpr = (NestedExpression) v;
-                  String nestedPath = nestedExpr.getNestedPath();
-                  if (!nestedQueries.containsKey(nestedPath)) {
-                    nestedQueries.put(nestedPath,
-                            new NestedQueryBuilder(
-                                    nestedPath, new MatchAllQueryBuilder(), None)
-                                    .innerHit(new InnerHitBuilder().setName(nestedPath)
-                                    .setFetchSourceContext(
-                                            new FetchSourceContext(
-                                                    true,
-                                                    new String[0],
-                                                    new String[0]))
-                            ));
-                  }
-                  Set<String> includes = new HashSet<>(
-                          Arrays.asList(nestedQueries.get(nestedPath)
-                                  .innerHit().getFetchSourceContext().includes()
-                          ));
-                  includes.add(v.getAttr());
-                  nestedQueries.get(nestedPath).innerHit().setFetchSourceContext(
-                          new FetchSourceContext(true,
-                                  includes.toArray(new String[0]),
-                                  new String[0])
-                  );
-                });
-        BoolQueryBuilder newQuery = new BoolQueryBuilder();
-        if (!(query instanceof NestedQueryBuilder)) {
-          newQuery.must(query);
-        }
-        nestedQueries.values().forEach(newQuery::must);
-        query = newQuery;
-      }
+      query = includeUnconsumedProjects(query, unconsumedProjects);
       context.pushDown(query);
 
       if (node.getLimit() != null) {
@@ -206,7 +172,39 @@ public class ElasticsearchIndex implements Table {
       if (node.hasProjects()) {
         context.pushDownProjects(node.getProjectList());
       }
+
       return indexScan;
+    }
+
+    private QueryBuilder includeUnconsumedProjects(QueryBuilder query,
+                                                   Set<ReferenceExpression> projects) {
+      BoolQueryBuilder newQuery = new BoolQueryBuilder().must(query);
+      Map<String, Set<String>> projectsByPath = new HashMap<>();
+
+      projects.stream()
+              .filter(project -> project instanceof NestedExpression)
+              .map(project -> (NestedExpression) project)
+              .forEach(project -> {
+                if (!projectsByPath.containsKey(project.getNestedPath())) {
+                  projectsByPath.put(project.getNestedPath(),
+                          Collections.singleton(project.getAttr()));
+                } else {
+                  projectsByPath.get(project.getNestedPath()).add(project.getAttr());
+                }
+              });
+
+      for (String nestedPath : projectsByPath.keySet()) {
+        newQuery.must(new NestedQueryBuilder(nestedPath, new MatchAllQueryBuilder(), None)
+                .innerHit(new InnerHitBuilder(nestedPath)
+                        .setFetchSourceContext(new FetchSourceContext(true,
+                                projectsByPath.get(nestedPath).toArray(new String[0]),
+                                new String[0])
+                        )
+                )
+        );
+      }
+
+      return newQuery;
     }
 
     /**

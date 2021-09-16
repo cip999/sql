@@ -27,11 +27,11 @@ import com.amazon.opendistroforelasticsearch.sql.elasticsearch.storage.script.fi
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.storage.script.filter.lucene.TermQuery;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.storage.script.filter.lucene.WildcardQuery;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.storage.serialization.ExpressionSerializer;
-import com.amazon.opendistroforelasticsearch.sql.exception.ExpressionEvaluationException;
 import com.amazon.opendistroforelasticsearch.sql.expression.Expression;
 import com.amazon.opendistroforelasticsearch.sql.expression.ExpressionNodeVisitor;
 import com.amazon.opendistroforelasticsearch.sql.expression.FunctionExpression;
 import com.amazon.opendistroforelasticsearch.sql.expression.NestedExpression;
+import com.amazon.opendistroforelasticsearch.sql.expression.ReferenceExpression;
 import com.amazon.opendistroforelasticsearch.sql.expression.function.BuiltinFunctionName;
 import com.amazon.opendistroforelasticsearch.sql.expression.function.FunctionName;
 import com.google.common.collect.ImmutableMap;
@@ -48,7 +48,7 @@ import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import lombok.RequiredArgsConstructor;
+import lombok.Getter;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.InnerHitBuilder;
 import org.elasticsearch.index.query.NestedQueryBuilder;
@@ -58,13 +58,18 @@ import org.elasticsearch.index.query.ScriptQueryBuilder;
 import org.elasticsearch.script.Script;
 import org.elasticsearch.search.fetch.subphase.FetchSourceContext;
 
-@RequiredArgsConstructor
 public class FilterQueryBuilder extends ExpressionNodeVisitor<QueryBuilder, Object> {
 
   /**
    * Serializer that serializes expression for build DSL query.
    */
   private final ExpressionSerializer serializer;
+
+  /**
+   * Query projects.
+   */
+  @Getter
+  private Set<ReferenceExpression> projectList;
 
   /**
    * Mapping from function name to lucene query builder.
@@ -78,6 +83,15 @@ public class FilterQueryBuilder extends ExpressionNodeVisitor<QueryBuilder, Obje
           .put(BuiltinFunctionName.GTE.getName(), new RangeQuery(Comparison.GTE))
           .put(BuiltinFunctionName.LIKE.getName(), new WildcardQuery())
           .build();
+
+  public FilterQueryBuilder(ExpressionSerializer serializer) {
+    this(serializer, new HashSet<>());
+  }
+
+  public FilterQueryBuilder(ExpressionSerializer serializer, Set<ReferenceExpression> projectList) {
+    this.serializer = serializer;
+    this.projectList = projectList;
+  }
 
   /**
    * Build Elasticsearch filter query from expression.
@@ -113,36 +127,63 @@ public class FilterQueryBuilder extends ExpressionNodeVisitor<QueryBuilder, Obje
       }
     }
 
-    Set<String> nestedPaths = new HashSet<>();
+    String nestedPath = null;
+    String[] includes = new String[0];
 
     if (queryBuilder instanceof BoolQueryBuilder) {
       BoolQueryBuilder boolQueryBuilder = (BoolQueryBuilder) queryBuilder;
-      nestedPaths = getNestedPaths(boolQueryBuilder);
-      queryBuilder = unwrapNestedBuilders(boolQueryBuilder);
+      Set<String> nestedPaths = getNestedPaths(boolQueryBuilder);
+      if (nestedPaths.size() == 1 && areAllClausesNested(boolQueryBuilder)) {
+        queryBuilder = unwrapNestedBuilders(boolQueryBuilder);
+        nestedPath = (String) nestedPaths.toArray()[0];
+        includes = getIncludes(boolQueryBuilder);
+      }
+    } else {
+      Optional<NestedExpression> nestedExpr = func.getArguments()
+              .stream()
+              .filter(arg -> arg instanceof NestedExpression)
+              .map(arg -> (NestedExpression) arg)
+              .findAny();
+      if (nestedExpr.isPresent()) {
+        nestedPath = nestedExpr.get().getNestedPath();
+        final String finalNestedPath = nestedPath;
+        List<ReferenceExpression> nestedArgs = projectList.stream()
+                .filter(project -> (project instanceof NestedExpression
+                        && ((NestedExpression) project).getNestedPath().equals(finalNestedPath)))
+                .collect(Collectors.toList());
+        projectList.removeAll(nestedArgs);
+        includes = nestedArgs.stream().map(ReferenceExpression::getAttr).toArray(String[]::new);
+      }
     }
 
-    Optional<NestedExpression> nestedExpr = func.getArguments()
-            .stream()
-            .filter(arg -> arg instanceof NestedExpression)
-            .map(arg -> (NestedExpression) arg)
-            .findAny();
-    if (nestedExpr.isPresent()) {
-      nestedPaths.add(nestedExpr.get().getNestedPath());
-    }
-
-    if (nestedPaths.size() > 1) {
-      throw new ExpressionEvaluationException(
-              "Cannot have two or more distinct nested paths in same filter clause"
-      );
-    } else if (!nestedPaths.isEmpty()) {
-      String nestedPath = (String) nestedPaths.toArray()[0];
-      return new NestedQueryBuilder(nestedPath, queryBuilder, None).innerHit(
-              new InnerHitBuilder().setName(nestedPath)
-                      .setFetchSourceContext(
-                              new FetchSourceContext(true, new String[0], new String[0])));
+    if (nestedPath != null) {
+      if (includes.length == 0) {
+        return new NestedQueryBuilder(nestedPath, queryBuilder, None);
+      } else {
+        return new NestedQueryBuilder(nestedPath, queryBuilder, None).innerHit(
+                new InnerHitBuilder().setName(nestedPath).setFetchSourceContext(
+                        new FetchSourceContext(true, includes, new String[0])
+                )
+        );
+      }
     } else {
       return queryBuilder;
     }
+  }
+
+  private boolean areAllClausesNested(BoolQueryBuilder queryBuilder) {
+    for (List<QueryBuilder> clauses : Stream.of(new ArrayList<>(Arrays.asList(
+            queryBuilder.must(),
+            queryBuilder.mustNot(),
+            queryBuilder.filter(),
+            queryBuilder.should())))
+            .flatMap(Collection::stream)
+            .collect(Collectors.toList())) {
+      if (clauses.stream().anyMatch(qb -> !(qb instanceof NestedQueryBuilder))) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private Set<String> getNestedPaths(BoolQueryBuilder queryBuilder) {
@@ -155,11 +196,31 @@ public class FilterQueryBuilder extends ExpressionNodeVisitor<QueryBuilder, Obje
             .flatMap(Collection::stream)
             .collect(Collectors.toList())) {
       nestedPaths.addAll(clauses.stream()
-              .filter(qb -> qb instanceof NestedQueryBuilder)
+              .filter(qb -> qb instanceof NestedQueryBuilder
+                      && ((NestedQueryBuilder) qb).innerHit() != null)
               .map(qb -> ((NestedQueryBuilder) qb).innerHit().getName())
               .collect(Collectors.toList()));
     }
     return nestedPaths;
+  }
+
+  private String[] getIncludes(BoolQueryBuilder queryBuilder) {
+    Set<String> includes = new HashSet<>();
+    for (List<QueryBuilder> clauses : Stream.of(new ArrayList<>(Arrays.asList(
+            queryBuilder.must(),
+            queryBuilder.mustNot(),
+            queryBuilder.filter(),
+            queryBuilder.should())))
+            .flatMap(Collection::stream)
+            .collect(Collectors.toList())) {
+      includes.addAll(clauses.stream()
+              .filter(qb -> qb instanceof NestedQueryBuilder
+                      && ((NestedQueryBuilder) qb).innerHit() != null)
+              .flatMap(qb -> Arrays.stream(((NestedQueryBuilder) qb)
+                      .innerHit().getFetchSourceContext().includes()))
+              .collect(Collectors.toList()));
+    }
+    return includes.toArray(new String[0]);
   }
 
   private QueryBuilder unwrapNestedBuilders(BoolQueryBuilder queryBuilder) {

@@ -285,22 +285,19 @@ class FilterQueryBuilderTest {
   }
 
   @Test
-  void multiple_nested_paths_should_throw_exception() {
-    ExpressionEvaluationException exception = assertThrows(
-            ExpressionEvaluationException.class, () -> buildQuery(
-                    dsl.and(
-                            dsl.less(
-                                    DSL.nested("firstPath.firstField", "firstPath", INTEGER),
-                                    literal(2)),
-                            dsl.equal(
-                                    DSL.nested("secondPath.secondField", "secondPath", STRING),
-                                    literal("John")
-                            )
+  void multiple_nested_paths() {
+    String queryString = buildQuery(
+            dsl.and(
+                    dsl.less(
+                            DSL.nested("firstPath.firstField", "firstPath", INTEGER),
+                            literal(2)),
+                    dsl.equal(
+                            DSL.nested("secondPath.secondField", "secondPath", STRING),
+                            literal("John")
                     )
             )
     );
-    assertEquals("Cannot have two or more distinct nested paths in same filter clause",
-            exception.getMessage());
+    assertTrue(queryString.contains("\"nested\""));
   }
 
   private static void assertJsonEquals(String expected, String actual) {
