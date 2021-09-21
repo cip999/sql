@@ -299,11 +299,11 @@ class FilterQueryBuilderTest {
   }
 
   @Test
-  void should_use_keyword_for_multi_field_in_like_expression() {
+  void should_not_use_keyword_for_multi_field_in_like_expression() {
     assertJsonEquals(
         "{\n"
             + "  \"wildcard\" : {\n"
-            + "    \"name.keyword\" : {\n"
+            + "    \"name\" : {\n"
             + "      \"wildcard\" : \"John*\",\n"
             + "      \"boost\" : 1.0\n"
             + "    }\n"
