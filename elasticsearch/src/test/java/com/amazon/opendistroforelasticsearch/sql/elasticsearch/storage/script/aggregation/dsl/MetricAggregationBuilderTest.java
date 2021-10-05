@@ -17,12 +17,15 @@
 
 package com.amazon.opendistroforelasticsearch.sql.elasticsearch.storage.script.aggregation.dsl;
 
+import static com.amazon.opendistroforelasticsearch.sql.data.type.ExprCoreType.DOUBLE;
 import static com.amazon.opendistroforelasticsearch.sql.data.type.ExprCoreType.INTEGER;
 import static com.amazon.opendistroforelasticsearch.sql.expression.DSL.literal;
 import static com.amazon.opendistroforelasticsearch.sql.expression.DSL.named;
+import static com.amazon.opendistroforelasticsearch.sql.expression.DSL.nested;
 import static com.amazon.opendistroforelasticsearch.sql.expression.DSL.ref;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.storage.serialization.ExpressionSerializer;
@@ -35,6 +38,8 @@ import com.amazon.opendistroforelasticsearch.sql.expression.aggregation.SumAggre
 import com.amazon.opendistroforelasticsearch.sql.expression.function.FunctionName;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
@@ -175,6 +180,24 @@ class MetricAggregationBuilderTest {
   }
 
   @Test
+  void build_multiple_aggregation_for_same_nested_field() {
+    String queryString = buildQuery(
+            Arrays.asList(
+                    named("avg(path.field)", new AvgAggregator(Collections.singletonList(
+                            nested("path.field", "path", INTEGER)
+                    ), DOUBLE)),
+                    named("count(path.field)", new CountAggregator(Collections.singletonList(
+                            nested("path.field", "path", INTEGER)
+                    ), INTEGER))
+            )
+    );
+
+    assertTrue(queryString.contains("\"NESTED(path)\""));
+    assertTrue(queryString.contains("\"avg(path.field)\""));
+    assertTrue(queryString.contains("\"count(path.field)\""));
+  }
+
+  @Test
   void should_throw_exception_for_unsupported_aggregator() {
     when(aggregator.getFunctionName()).thenReturn(new FunctionName("unsupported_agg"));
     when(aggregator.getArguments()).thenReturn(Arrays.asList(ref("age", INTEGER)));
@@ -182,11 +205,11 @@ class MetricAggregationBuilderTest {
     IllegalStateException exception =
         assertThrows(IllegalStateException.class,
             () -> buildQuery(Arrays.asList(named("unsupported_agg(age)", aggregator))));
-    assertEquals("unsupported aggregator unsupported_agg", exception.getMessage());
+    assertEquals("Unsupported aggregator unsupported_agg", exception.getMessage());
   }
 
   @Test
-  void should_throw_exception_for_unsupported_exception() {
+  void should_throw_exception_for_unsupported_expression() {
     IllegalStateException exception =
         assertThrows(IllegalStateException.class, () -> buildQuery(Arrays.asList(
             named("count(age)",

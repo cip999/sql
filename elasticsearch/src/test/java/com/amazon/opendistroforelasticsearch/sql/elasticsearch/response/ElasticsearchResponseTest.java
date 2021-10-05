@@ -28,9 +28,13 @@ import static org.mockito.Mockito.when;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprIntegerValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprTupleValue;
 import com.amazon.opendistroforelasticsearch.sql.data.model.ExprValue;
+import com.amazon.opendistroforelasticsearch.sql.data.type.ExprType;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.value.ElasticsearchExprValueFactory;
 import com.google.common.collect.ImmutableMap;
 import java.util.Arrays;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import org.apache.lucene.search.TotalHits;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.search.SearchHit;
@@ -101,9 +105,9 @@ class ElasticsearchResponseTest {
                 new TotalHits(2L, TotalHits.Relation.EQUAL_TO),
                 1.0F));
 
-    when(searchHit1.getSourceAsString()).thenReturn("{\"id1\", 1}");
-    when(searchHit2.getSourceAsString()).thenReturn("{\"id1\", 2}");
-    when(factory.construct(any())).thenReturn(exprTupleValue1).thenReturn(exprTupleValue2);
+    when(factory.construct(any(SearchHit.class), any(String.class), any(ExprType.class)))
+            .thenReturn(Stream.of(exprTupleValue1).collect(Collectors.toList()))
+            .thenReturn(Stream.of(exprTupleValue2).collect(Collectors.toList()));
 
     int i = 0;
     for (ExprValue hit : new ElasticsearchResponse(esResponse, factory)) {
@@ -142,8 +146,9 @@ class ElasticsearchResponseTest {
       when(ElasticsearchAggregationResponseParser.parse(any()))
           .thenReturn(Arrays.asList(ImmutableMap.of("id1", 1), ImmutableMap.of("id2", 2)));
       when(esResponse.getAggregations()).thenReturn(aggregations);
-      when(factory.construct(anyString(), any())).thenReturn(new ExprIntegerValue(1))
-          .thenReturn(new ExprIntegerValue(2));
+      when(factory.construct(anyString(), any()))
+              .thenReturn(Stream.of(new ExprIntegerValue(1)).collect(Collectors.toList()))
+              .thenReturn(Stream.of(new ExprIntegerValue(2)).collect(Collectors.toList()));
 
       int i = 0;
       for (ExprValue hit : new ElasticsearchResponse(esResponse, factory)) {

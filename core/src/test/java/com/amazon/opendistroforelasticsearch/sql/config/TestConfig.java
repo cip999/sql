@@ -64,6 +64,8 @@ public class TestConfig {
       .put(STRING_TYPE_MISSING_VALUE_FILED, ExprCoreType.STRING)
       .put("struct_value", ExprCoreType.STRUCT)
       .put("array_value", ExprCoreType.ARRAY)
+      .put("struct_value.array_value", ExprCoreType.ARRAY)
+      .put("struct_value.array_value.subfield", ExprCoreType.INTEGER)
       .build();
 
   @Bean

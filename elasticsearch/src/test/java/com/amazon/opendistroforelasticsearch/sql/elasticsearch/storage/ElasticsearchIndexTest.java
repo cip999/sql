@@ -54,6 +54,8 @@ import com.amazon.opendistroforelasticsearch.sql.elasticsearch.client.Elasticsea
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.type.ElasticsearchDataType;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.value.ElasticsearchExprValueFactory;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.mapping.IndexMapping;
+import com.amazon.opendistroforelasticsearch.sql.elasticsearch.planner.logical.ElasticsearchLogicalIndexAgg;
+import com.amazon.opendistroforelasticsearch.sql.elasticsearch.storage.script.filter.lucene.TermQuery;
 import com.amazon.opendistroforelasticsearch.sql.expression.DSL;
 import com.amazon.opendistroforelasticsearch.sql.expression.Expression;
 import com.amazon.opendistroforelasticsearch.sql.expression.NamedExpression;
@@ -71,12 +73,29 @@ import com.amazon.opendistroforelasticsearch.sql.planner.physical.PhysicalPlanDS
 import com.amazon.opendistroforelasticsearch.sql.planner.physical.ProjectOperator;
 import com.amazon.opendistroforelasticsearch.sql.storage.Table;
 import com.google.common.collect.ImmutableMap;
+
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import com.sun.org.apache.xpath.internal.operations.Bool;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
+import org.elasticsearch.index.query.BoolQueryBuilder;
+import org.elasticsearch.index.query.NestedQueryBuilder;
+import org.elasticsearch.index.query.QueryBuilder;
+import org.elasticsearch.index.query.TermQueryBuilder;
+import org.elasticsearch.search.aggregations.bucket.filter.FilterAggregationBuilder;
+import org.elasticsearch.search.aggregations.bucket.nested.NestedAggregationBuilder;
+import org.elasticsearch.search.aggregations.bucket.nested.NestedAggregator;
+import org.elasticsearch.search.aggregations.metrics.AvgAggregationBuilder;
+import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.fetch.subphase.FetchSourceContext;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -99,46 +118,46 @@ class ElasticsearchIndexTest {
   @Test
   void getFieldTypes() {
     when(client.getIndexMappings("test"))
-        .thenReturn(
-            ImmutableMap.of(
-                "test",
-                new IndexMapping(
-                    ImmutableMap.<String, String>builder()
-                        .put("name", "keyword")
-                        .put("address", "text")
-                        .put("age", "integer")
-                        .put("account_number", "long")
-                        .put("balance1", "float")
-                        .put("balance2", "double")
-                        .put("gender", "boolean")
-                        .put("family", "nested")
-                        .put("employer", "object")
-                        .put("birthday", "date")
-                        .put("id1", "byte")
-                        .put("id2", "short")
-                        .put("blob", "binary")
-                        .build())));
+            .thenReturn(
+                    ImmutableMap.of(
+                            "test",
+                            new IndexMapping(
+                                    ImmutableMap.<String, String>builder()
+                                            .put("name", "keyword")
+                                            .put("address", "text")
+                                            .put("age", "integer")
+                                            .put("account_number", "long")
+                                            .put("balance1", "float")
+                                            .put("balance2", "double")
+                                            .put("gender", "boolean")
+                                            .put("family", "nested")
+                                            .put("employer", "object")
+                                            .put("birthday", "date")
+                                            .put("id1", "byte")
+                                            .put("id2", "short")
+                                            .put("blob", "binary")
+                                            .build())));
 
     Table index = new ElasticsearchIndex(client, settings, "test");
     Map<String, ExprType> fieldTypes = index.getFieldTypes();
     assertThat(
-        fieldTypes,
-        allOf(
-            aMapWithSize(13),
-            hasEntry("name", ExprCoreType.STRING),
-            hasEntry("address", (ExprType) ElasticsearchDataType.ES_TEXT),
-            hasEntry("age", ExprCoreType.INTEGER),
-            hasEntry("account_number", ExprCoreType.LONG),
-            hasEntry("balance1", ExprCoreType.FLOAT),
-            hasEntry("balance2", ExprCoreType.DOUBLE),
-            hasEntry("gender", ExprCoreType.BOOLEAN),
-            hasEntry("family", ExprCoreType.ARRAY),
-            hasEntry("employer", ExprCoreType.STRUCT),
-            hasEntry("birthday", ExprCoreType.TIMESTAMP),
-            hasEntry("id1", ExprCoreType.BYTE),
-            hasEntry("id2", ExprCoreType.SHORT),
-            hasEntry("blob", (ExprType) ElasticsearchDataType.ES_BINARY)
-        ));
+            fieldTypes,
+            allOf(
+                    aMapWithSize(13),
+                    hasEntry("name", ExprCoreType.STRING),
+                    hasEntry("address", (ExprType) ElasticsearchDataType.ES_TEXT),
+                    hasEntry("age", ExprCoreType.INTEGER),
+                    hasEntry("account_number", ExprCoreType.LONG),
+                    hasEntry("balance1", ExprCoreType.FLOAT),
+                    hasEntry("balance2", ExprCoreType.DOUBLE),
+                    hasEntry("gender", ExprCoreType.BOOLEAN),
+                    hasEntry("family", ExprCoreType.ARRAY),
+                    hasEntry("employer", ExprCoreType.STRUCT),
+                    hasEntry("birthday", ExprCoreType.TIMESTAMP),
+                    hasEntry("id1", ExprCoreType.BYTE),
+                    hasEntry("id2", ExprCoreType.SHORT),
+                    hasEntry("blob", (ExprType) ElasticsearchDataType.ES_BINARY)
+            ));
   }
 
   @Test
@@ -149,8 +168,8 @@ class ElasticsearchIndexTest {
     LogicalPlan plan = relation(indexName);
     Table index = new ElasticsearchIndex(client, settings, indexName);
     assertEquals(
-        new ElasticsearchIndexScan(client, settings, indexName, exprValueFactory),
-        index.implement(plan));
+            new ElasticsearchIndexScan(client, settings, indexName, exprValueFactory),
+            index.implement(plan));
   }
 
   @Test
@@ -161,8 +180,8 @@ class ElasticsearchIndexTest {
     LogicalPlan plan = relation(indexName);
     Table index = new ElasticsearchIndex(client, settings, indexName);
     assertEquals(
-        new ElasticsearchIndexScan(client, settings, indexName, exprValueFactory),
-        index.implement(index.optimize(plan)));
+            new ElasticsearchIndexScan(client, settings, indexName, exprValueFactory),
+            index.implement(index.optimize(plan)));
   }
 
   @Test
@@ -176,48 +195,49 @@ class ElasticsearchIndexTest {
     Expression filterExpr = literal(ExprBooleanValue.of(true));
     List<NamedExpression> groupByExprs = Arrays.asList(named("age", ref("age", INTEGER)));
     List<NamedAggregator> aggregators =
-        Arrays.asList(named("avg(age)", new AvgAggregator(Arrays.asList(ref("age", INTEGER)),
-            DOUBLE)));
+            Arrays.asList(named("avg(age)", new AvgAggregator(Arrays.asList(ref("age", INTEGER)),
+                    DOUBLE)));
     Map<ReferenceExpression, ReferenceExpression> mappings =
-        ImmutableMap.of(ref("name", STRING), ref("lastname", STRING));
+            ImmutableMap.of(ref("name", STRING), ref("lastname", STRING));
     Pair<ReferenceExpression, Expression> newEvalField =
-        ImmutablePair.of(ref("name1", STRING), ref("name", STRING));
+            ImmutablePair.of(ref("name1", STRING), ref("name", STRING));
     Integer sortCount = 100;
     Pair<Sort.SortOption, Expression> sortField =
-        ImmutablePair.of(Sort.SortOption.DEFAULT_ASC, ref("name1", STRING));
+            ImmutablePair.of(Sort.SortOption.DEFAULT_ASC, ref("name1", STRING));
 
     LogicalPlan plan =
-        project(
-            LogicalPlanDSL.dedupe(
-                sort(
-                    eval(
-                        remove(
-                            rename(
-                                relation(indexName),
-                                mappings),
-                            exclude),
-                        newEvalField),
-                    sortField),
-                dedupeField),
-            include);
+            project(
+                    LogicalPlanDSL.dedupe(
+                            sort(
+                                    eval(
+                                            remove(
+                                                    rename(
+                                                            relation(indexName),
+                                                            mappings),
+                                                    exclude),
+                                            newEvalField),
+                                    sortField),
+                            dedupeField),
+                    include);
 
     Table index = new ElasticsearchIndex(client, settings, indexName);
     assertEquals(
-        PhysicalPlanDSL.project(
-            PhysicalPlanDSL.dedupe(
-                PhysicalPlanDSL.sort(
-                    PhysicalPlanDSL.eval(
-                        PhysicalPlanDSL.remove(
-                            PhysicalPlanDSL.rename(
-                                new ElasticsearchIndexScan(client, settings, indexName,
-                                    exprValueFactory),
-                                mappings),
-                            exclude),
-                        newEvalField),
-                    sortField),
-                dedupeField),
-            include),
-        index.implement(plan));
+            PhysicalPlanDSL.project(
+                    PhysicalPlanDSL.dedupe(
+                            PhysicalPlanDSL.sort(
+                                    PhysicalPlanDSL.eval(
+                                            PhysicalPlanDSL.remove(
+                                                    PhysicalPlanDSL.rename(
+                                                            new ElasticsearchIndexScan(
+                                                                    client, settings, indexName,
+                                                                    exprValueFactory),
+                                                            mappings),
+                                                    exclude),
+                                            newEvalField),
+                                    sortField),
+                            dedupeField),
+                    include),
+            index.implement(plan));
   }
 
   @Test
@@ -231,12 +251,12 @@ class ElasticsearchIndexTest {
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
     PhysicalPlan plan = index.implement(
-        project(
-            indexScan(
-                indexName,
-                filterExpr
-            ),
-            named));
+            project(
+                    indexScan(
+                            indexName,
+                            filterExpr
+                    ),
+                    named));
 
     assertTrue(plan instanceof ProjectOperator);
     assertTrue(((ProjectOperator) plan).getInput() instanceof ElasticsearchIndexScan);
@@ -250,19 +270,19 @@ class ElasticsearchIndexTest {
     Expression filterExpr = dsl.equal(field, literal("John"));
     List<NamedExpression> groupByExprs = Arrays.asList(named("age", ref("age", INTEGER)));
     List<NamedAggregator> aggregators =
-        Arrays.asList(named("avg(age)", new AvgAggregator(Arrays.asList(ref("age", INTEGER)),
-            DOUBLE)));
+            Arrays.asList(named("avg(age)", new AvgAggregator(Arrays.asList(ref("age", INTEGER)),
+                    DOUBLE)));
 
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
     PhysicalPlan plan = index.implement(
-        filter(
-            aggregation(
-                relation(indexName),
-                aggregators,
-                groupByExprs
-            ),
-            filterExpr));
+            filter(
+                    aggregation(
+                            relation(indexName),
+                            aggregators,
+                            groupByExprs
+                    ),
+                    filterExpr));
 
     assertTrue(plan instanceof FilterOperator);
   }
@@ -275,31 +295,31 @@ class ElasticsearchIndexTest {
     Expression filterExpr = dsl.equal(field, literal("John"));
     List<NamedExpression> groupByExprs = Arrays.asList(named("age", ref("age", INTEGER)));
     List<NamedAggregator> aggregators =
-        Arrays.asList(named("avg(age)", new AvgAggregator(Arrays.asList(ref("age", INTEGER)),
-            DOUBLE)));
+            Arrays.asList(named("avg(age)", new AvgAggregator(Arrays.asList(ref("age", INTEGER)),
+                    DOUBLE)));
 
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
 
     // IndexScanAgg without Filter
     PhysicalPlan plan = index.implement(
-        filter(
-            indexScanAgg(
-                indexName,
-                aggregators,
-                groupByExprs
-            ),
-            filterExpr));
+            filter(
+                    indexScanAgg(
+                            indexName,
+                            aggregators,
+                            groupByExprs
+                    ),
+                    filterExpr));
 
     assertTrue(plan.getChild().get(0) instanceof ElasticsearchIndexScan);
 
     // IndexScanAgg with Filter
     plan = index.implement(
-        indexScanAgg(
-            indexName,
-            filterExpr,
-            aggregators,
-            groupByExprs));
+            indexScanAgg(
+                    indexName,
+                    filterExpr,
+                    aggregators,
+                    groupByExprs));
     assertTrue(plan instanceof ElasticsearchIndexScan);
   }
 
@@ -311,19 +331,19 @@ class ElasticsearchIndexTest {
     Expression filterExpr = dsl.equal(field, literal("John"));
     List<NamedExpression> groupByExprs = Arrays.asList(named("age", ref("age", INTEGER)));
     List<NamedAggregator> aggregators =
-        Arrays.asList(named("avg(age)", new AvgAggregator(Arrays.asList(ref("age", INTEGER)),
-            DOUBLE)));
+            Arrays.asList(named("avg(age)", new AvgAggregator(Arrays.asList(ref("age", INTEGER)),
+                    DOUBLE)));
 
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
 
     PhysicalPlan plan = index.implement(
-        aggregation(
-            filter(filter(
-                relation(indexName),
-                filterExpr), filterExpr),
-            aggregators,
-            groupByExprs));
+            aggregation(
+                    filter(filter(
+                            relation(indexName),
+                            filterExpr), filterExpr),
+                    aggregators,
+                    groupByExprs));
     assertTrue(plan instanceof AggregationOperator);
   }
 
@@ -338,12 +358,12 @@ class ElasticsearchIndexTest {
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
     PhysicalPlan plan = index.implement(
-        project(
-            indexScan(
-                indexName,
-                Pair.of(Sort.SortOption.DEFAULT_ASC, sortExpr)
-            ),
-            named));
+            project(
+                    indexScan(
+                            indexName,
+                            Pair.of(Sort.SortOption.DEFAULT_ASC, sortExpr)
+                    ),
+                    named));
 
     assertTrue(plan instanceof ProjectOperator);
     assertTrue(((ProjectOperator) plan).getInput() instanceof ElasticsearchIndexScan);
@@ -359,12 +379,12 @@ class ElasticsearchIndexTest {
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
     PhysicalPlan plan = index.implement(
-        project(
-            indexScan(
-                indexName,
-                1, 1, noProjects()
-            ),
-            named));
+            project(
+                    indexScan(
+                            indexName,
+                            1, 1, noProjects()
+                    ),
+                    named));
 
     assertTrue(plan instanceof ProjectOperator);
     assertTrue(((ProjectOperator) plan).getInput() instanceof ElasticsearchIndexScan);
@@ -381,14 +401,16 @@ class ElasticsearchIndexTest {
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
     PhysicalPlan plan = index.implement(
-        project(
-            indexScan(
-                indexName,
-                sortExpr,
-                1, 1,
-                noProjects()
-            ),
-            named));
+            project(
+                    indexScan(
+                            indexName,
+                            null,
+                            1, 1,
+                            Stream.of(Pair.of(Sort.SortOption.DEFAULT_ASC, sortExpr))
+                                    .collect(Collectors.toList()),
+                            noProjects()
+                    ),
+                    named));
 
     assertTrue(plan instanceof ProjectOperator);
     assertTrue(((ProjectOperator) plan).getInput() instanceof ElasticsearchIndexScan);
@@ -401,17 +423,17 @@ class ElasticsearchIndexTest {
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
     PhysicalPlan plan = index.implement(index.optimize(
-        project(
-            limit(
-                sort(
-                    relation("test"),
-                    Pair.of(Sort.SortOption.DEFAULT_ASC,
-                        dsl.abs(named("intV", ref("intV", INTEGER))))
-                ),
-                300, 1
-            ),
-            named("intV", ref("intV", INTEGER))
-        )
+            project(
+                    limit(
+                            sort(
+                                    relation("test"),
+                                    Pair.of(Sort.SortOption.DEFAULT_ASC,
+                                            dsl.abs(named("intV", ref("intV", INTEGER))))
+                            ),
+                            300, 1
+                    ),
+                    named("intV", ref("intV", INTEGER))
+            )
     ));
 
     assertTrue(plan instanceof ProjectOperator);
@@ -425,19 +447,170 @@ class ElasticsearchIndexTest {
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
     PhysicalPlan plan = index.implement(
-        project(
-            indexScan(
-                indexName, projects(ref("intV", INTEGER))
-            ),
-            named("i", ref("intV", INTEGER))));
+            project(
+                    indexScan(
+                            indexName, projects(ref("intV", INTEGER))
+                    ),
+                    named("i", ref("intV", INTEGER))));
 
     assertTrue(plan instanceof ProjectOperator);
     assertTrue(((ProjectOperator) plan).getInput() instanceof ElasticsearchIndexScan);
 
     final FetchSourceContext fetchSource =
-        ((ElasticsearchIndexScan) ((ProjectOperator) plan).getInput()).getRequest()
-            .getSourceBuilder().fetchSource();
+            ((ElasticsearchIndexScan) ((ProjectOperator) plan).getInput()).getRequest()
+                    .getSourceBuilder().fetchSource();
     assertThat(fetchSource.includes(), arrayContaining("intV"));
     assertThat(fetchSource.excludes(), emptyArray());
+  }
+
+  @Test
+  void shouldPushDownProjectsAndFilter() {
+    when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    String indexName = "test";
+    ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
+
+    ReferenceExpression expr = ref("field", INTEGER);
+    Expression filterExpr = dsl.equal(expr, DSL.literal(1));
+
+    PhysicalPlan plan = index.implement(
+            project(
+                    indexScan(
+                            indexName, filterExpr, projects(expr)
+                    ),
+                    named("field", expr)
+            )
+    );
+
+    assertTrue(plan instanceof ProjectOperator);
+    assertTrue(((ProjectOperator) plan).getInput() instanceof ElasticsearchIndexScan);
+
+    final FetchSourceContext fetchSource =
+            ((ElasticsearchIndexScan) ((ProjectOperator) plan).getInput()).getRequest()
+                    .getSourceBuilder().fetchSource();
+    assertThat(fetchSource.includes(), arrayContaining("field"));
+    assertThat(fetchSource.excludes(), emptyArray());
+
+    final QueryBuilder query =
+            ((ElasticsearchIndexScan) ((ProjectOperator) plan).getInput()).getRequest()
+                    .getSourceBuilder().query();
+    assertTrue(query instanceof BoolQueryBuilder);
+    assertTrue(((BoolQueryBuilder) query).must().get(0) instanceof TermQueryBuilder);
+  }
+
+  @Test
+  void shouldVisitIndexScanWithNestedFilter() {
+    when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    String indexName = "test";
+    ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
+
+    ReferenceExpression nestedExpr = DSL.nested("array.field", "array", INTEGER);
+    Expression filterExpr = dsl.equal(nestedExpr, DSL.literal(1));
+
+    PhysicalPlan plan = index.implement(
+            project(
+                    indexScan(
+                            indexName, filterExpr, projects(nestedExpr)
+                    ),
+                    named("nestedField", nestedExpr)
+            )
+    );
+
+    assertTrue(plan instanceof ProjectOperator);
+    assertTrue(((ProjectOperator) plan).getInput() instanceof ElasticsearchIndexScan);
+
+    final QueryBuilder queryBuilder = ((ElasticsearchIndexScan) ((ProjectOperator) plan)
+            .getInput()).getRequest().getSourceBuilder().query();
+    assertTrue(queryBuilder instanceof BoolQueryBuilder);
+    assertTrue(((BoolQueryBuilder) queryBuilder).must().get(0) instanceof NestedQueryBuilder);
+  }
+
+  @Test
+  void shouldVisitIndexScanWithNestedProjects() {
+    when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    String indexName = "test";
+    ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
+
+    ReferenceExpression nestedExpr = DSL.nested("array.field", "array", INTEGER);
+    Expression filterExpr = dsl.equal(ref("anotherField", DOUBLE), DSL.literal(1f));
+
+    PhysicalPlan plan = index.implement(
+            project(
+                    indexScan(
+                            indexName, filterExpr, projects(nestedExpr)
+                    ),
+                    named("nestedField", nestedExpr)
+            )
+    );
+
+    assertTrue(plan instanceof ProjectOperator);
+    assertTrue(((ProjectOperator) plan).getInput() instanceof ElasticsearchIndexScan);
+
+    final QueryBuilder queryBuilder = ((ElasticsearchIndexScan) ((ProjectOperator) plan)
+            .getInput()).getRequest().getSourceBuilder().query();
+    assertTrue(queryBuilder instanceof BoolQueryBuilder);
+    assertTrue(((BoolQueryBuilder) queryBuilder).must().get(0) instanceof TermQueryBuilder);
+    assertTrue(((BoolQueryBuilder) queryBuilder).must().get(1) instanceof NestedQueryBuilder);
+  }
+
+  @Test
+  void shouldVisitIndexAggWithFilter() {
+    when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    String indexName = "test";
+    ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
+
+    ReferenceExpression field = ref("field", INTEGER);
+    Expression filterExpr = dsl.equal(field, literal(3));
+    List<NamedAggregator> aggregators =
+            Arrays.asList(named("avg(field)",
+                    new AvgAggregator(Arrays.asList(field), DOUBLE)));
+
+    PhysicalPlan plan = index.implement(
+            new ElasticsearchLogicalIndexAgg(
+                    "name",
+                    filterExpr,
+                    aggregators,
+                    new ArrayList<>(),
+                    new ArrayList<>()
+            )
+    );
+
+    assertTrue(plan instanceof ElasticsearchIndexScan);
+    final SearchSourceBuilder sourceBuilder = ((ElasticsearchIndexScan) plan)
+            .getRequest().getSourceBuilder();
+    assertTrue(sourceBuilder.query() instanceof TermQueryBuilder);
+    assertEquals(1, sourceBuilder.aggregations().getAggregatorFactories().size());
+    assertTrue(sourceBuilder.aggregations()
+            .getAggregatorFactories().toArray()[0] instanceof FilterAggregationBuilder);
+  }
+
+  @Test
+  void shouldVisitIndexAggWithNestedFilterAndFields() {
+    when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    String indexName = "test";
+    ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
+
+    ReferenceExpression nestedExpr = DSL.nested("array.field", "array", INTEGER);
+    Expression filterExpr = dsl.equal(nestedExpr, literal(3));
+    List<NamedAggregator> aggregators =
+            Arrays.asList(named("avg(array.field)",
+                    new AvgAggregator(Arrays.asList(nestedExpr), DOUBLE)));
+
+    PhysicalPlan plan = index.implement(
+            new ElasticsearchLogicalIndexAgg(
+                "name",
+                filterExpr,
+                aggregators,
+                new ArrayList<>(),
+                new ArrayList<>()
+            )
+    );
+
+    assertTrue(plan instanceof ElasticsearchIndexScan);
+    final SearchSourceBuilder sourceBuilder = ((ElasticsearchIndexScan) plan)
+            .getRequest().getSourceBuilder();
+    assertTrue(sourceBuilder.query() instanceof NestedQueryBuilder);
+    assertEquals(1, sourceBuilder.aggregations().getAggregatorFactories().size());
+    assertTrue(sourceBuilder.aggregations()
+            .getAggregatorFactories().toArray()[0] instanceof NestedAggregationBuilder);
   }
 }
