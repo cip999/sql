@@ -214,8 +214,7 @@ public class FilterQueryBuilder extends ExpressionNodeVisitor<QueryBuilder, Obje
             .flatMap(Collection::stream)
             .collect(Collectors.toList())) {
       includes.addAll(clauses.stream()
-              .filter(qb -> qb instanceof NestedQueryBuilder
-                      && ((NestedQueryBuilder) qb).innerHit() != null)
+              .filter(qb -> ((NestedQueryBuilder) qb).innerHit() != null)
               .flatMap(qb -> Arrays.stream(((NestedQueryBuilder) qb)
                       .innerHit().getFetchSourceContext().includes()))
               .collect(Collectors.toList()));
@@ -236,10 +235,8 @@ public class FilterQueryBuilder extends ExpressionNodeVisitor<QueryBuilder, Obje
                                    BiFunction<BoolQueryBuilder,
                                            QueryBuilder,
                                            QueryBuilder> accumulator) {
-    clauses.forEach(clause -> accumulator.apply(queryBuilder,
-            clause instanceof NestedQueryBuilder
-                    ? ((NestedQueryBuilder) clause).query()
-                    : clause
+    clauses.forEach(clause -> accumulator.apply(
+            queryBuilder, ((NestedQueryBuilder) clause).query()
     ));
   }
 

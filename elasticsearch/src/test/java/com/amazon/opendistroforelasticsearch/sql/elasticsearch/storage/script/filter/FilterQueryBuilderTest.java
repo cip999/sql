@@ -42,7 +42,12 @@ import com.amazon.opendistroforelasticsearch.sql.expression.config.ExpressionCon
 import com.google.common.collect.ImmutableMap;
 import java.util.Arrays;
 import java.util.List;
+
+import java.util.HashSet;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayNameGeneration;
@@ -65,10 +70,19 @@ class FilterQueryBuilderTest {
   private ExpressionSerializer serializer;
 
   private FilterQueryBuilder filterQueryBuilder;
+  private FilterQueryBuilder filterQueryBuilderWithProjects;
 
   @BeforeEach
   void set_up() {
     filterQueryBuilder = new FilterQueryBuilder(serializer);
+    filterQueryBuilderWithProjects = new FilterQueryBuilder(serializer,
+            Stream.of(
+                    DSL.ref("normalField", INTEGER),
+                    DSL.nested("path.firstField", "path", INTEGER),
+                    DSL.nested("path.secondField", "path", STRING),
+                    DSL.nested("firstPath.firstField", "firstPath", INTEGER)
+            ).collect(Collectors.toSet())
+    );
   }
 
   @Test
@@ -319,14 +333,20 @@ class FilterQueryBuilderTest {
 
   @Test
   void multiple_nested_clauses() {
-    String queryString = buildQuery(
+    String queryString = buildQueryWithProjects(
             dsl.and(
-                    dsl.less(
-                            DSL.nested("path.firstField", "path", INTEGER),
-                            literal(2)),
-                    dsl.equal(
-                            DSL.nested("path.secondField", "path", STRING),
-                            literal("John")
+                    dsl.or(
+                            dsl.less(
+                                    DSL.nested("path.firstField", "path", INTEGER),
+                                    literal(2)),
+                            dsl.equal(
+                                    DSL.nested("path.secondField", "path", STRING),
+                                    literal("John")
+                            )
+                    ),
+                    dsl.greater(
+                            DSL.ref("normalField", INTEGER),
+                            literal(10)
                     )
             )
     );
@@ -335,7 +355,7 @@ class FilterQueryBuilderTest {
 
   @Test
   void multiple_nested_paths() {
-    String queryString = buildQuery(
+    String queryString = buildQueryWithProjects(
             dsl.and(
                     dsl.less(
                             DSL.nested("firstPath.firstField", "firstPath", INTEGER),
@@ -356,6 +376,10 @@ class FilterQueryBuilderTest {
 
   private String buildQuery(Expression expr) {
     return filterQueryBuilder.build(expr).toString();
+  }
+
+  private String buildQueryWithProjects(Expression expr) {
+    return filterQueryBuilderWithProjects.build(expr).toString();
   }
 
   private void mockToStringSerializer() {

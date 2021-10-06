@@ -55,7 +55,6 @@ import com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.type.Elastic
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.value.ElasticsearchExprValueFactory;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.mapping.IndexMapping;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.planner.logical.ElasticsearchLogicalIndexAgg;
-import com.amazon.opendistroforelasticsearch.sql.elasticsearch.storage.script.filter.lucene.TermQuery;
 import com.amazon.opendistroforelasticsearch.sql.expression.DSL;
 import com.amazon.opendistroforelasticsearch.sql.expression.Expression;
 import com.amazon.opendistroforelasticsearch.sql.expression.NamedExpression;
@@ -74,7 +73,6 @@ import com.amazon.opendistroforelasticsearch.sql.planner.physical.ProjectOperato
 import com.amazon.opendistroforelasticsearch.sql.storage.Table;
 import com.google.common.collect.ImmutableMap;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -82,7 +80,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import com.sun.org.apache.xpath.internal.operations.Bool;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.elasticsearch.index.query.BoolQueryBuilder;
@@ -91,11 +88,8 @@ import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.TermQueryBuilder;
 import org.elasticsearch.search.aggregations.bucket.filter.FilterAggregationBuilder;
 import org.elasticsearch.search.aggregations.bucket.nested.NestedAggregationBuilder;
-import org.elasticsearch.search.aggregations.bucket.nested.NestedAggregator;
-import org.elasticsearch.search.aggregations.metrics.AvgAggregationBuilder;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.fetch.subphase.FetchSourceContext;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -503,15 +497,16 @@ class ElasticsearchIndexTest {
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
 
-    ReferenceExpression nestedExpr = DSL.nested("array.field", "array", INTEGER);
-    Expression filterExpr = dsl.equal(nestedExpr, DSL.literal(1));
+    ReferenceExpression firstNestedExpr = DSL.nested("firstArray.field", "firstArray", INTEGER);
+    ReferenceExpression secondNestedExpr = DSL.nested("secondArray.field", "secondArray", INTEGER);
+    Expression filterExpr = dsl.equal(firstNestedExpr, DSL.literal(1));
 
     PhysicalPlan plan = index.implement(
             project(
                     indexScan(
-                            indexName, filterExpr, projects(nestedExpr)
+                            indexName, filterExpr, projects(firstNestedExpr, secondNestedExpr)
                     ),
-                    named("nestedField", nestedExpr)
+                    named("firstNestedField", firstNestedExpr)
             )
     );
 
