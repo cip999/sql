@@ -185,12 +185,9 @@ public class ElasticsearchIndex implements Table {
               .filter(project -> project instanceof NestedExpression)
               .map(project -> (NestedExpression) project)
               .forEach(project -> {
-                if (!projectsByPath.containsKey(project.getNestedPath())) {
-                  projectsByPath.put(project.getNestedPath(),
-                          Collections.singleton(project.getAttr()));
-                } else {
-                  projectsByPath.get(project.getNestedPath()).add(project.getAttr());
-                }
+                String nestedPath = project.getNestedPath();
+                projectsByPath.putIfAbsent(nestedPath, new HashSet<>());
+                projectsByPath.get(nestedPath).add(project.getAttr());
               });
 
       for (String nestedPath : projectsByPath.keySet()) {
