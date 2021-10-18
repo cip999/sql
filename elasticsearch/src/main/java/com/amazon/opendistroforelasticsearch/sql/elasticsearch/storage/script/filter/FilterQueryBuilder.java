@@ -39,6 +39,7 @@ import com.google.common.collect.ImmutableMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -68,8 +69,14 @@ public class FilterQueryBuilder extends ExpressionNodeVisitor<QueryBuilder, Obje
   /**
    * Query projects.
    */
+  private final Set<ReferenceExpression> projectList;
+
+  /**
+   * Counts the number of inner hit builders for a given nested path.
+   */
   @Getter
-  private Set<ReferenceExpression> projectList;
+  private Map<String, Integer> innerHitsCount = new HashMap<>();
+
 
   /**
    * Mapping from function name to lucene query builder.
@@ -137,6 +144,8 @@ public class FilterQueryBuilder extends ExpressionNodeVisitor<QueryBuilder, Obje
         queryBuilder = unwrapNestedBuilders(boolQueryBuilder);
         nestedPath = (String) nestedPaths.toArray()[0];
         includes = getIncludes(boolQueryBuilder);
+        innerHitsCount.replace(nestedPath,
+                innerHitsCount.get(nestedPath) - countClauses(boolQueryBuilder) + 1);
       }
     } else {
       Optional<NestedExpression> nestedExpr = func.getArguments()
@@ -151,21 +160,18 @@ public class FilterQueryBuilder extends ExpressionNodeVisitor<QueryBuilder, Obje
                 .filter(project -> (project instanceof NestedExpression
                         && ((NestedExpression) project).getNestedPath().equals(finalNestedPath)))
                 .collect(Collectors.toList());
-        projectList.removeAll(nestedArgs);
         includes = nestedArgs.stream().map(ReferenceExpression::getAttr).toArray(String[]::new);
+        innerHitsCount.putIfAbsent(nestedPath, 0);
+        innerHitsCount.replace(nestedPath, innerHitsCount.get(nestedPath) + 1);
       }
     }
 
     if (nestedPath != null) {
-      if (includes.length == 0) {
-        return new NestedQueryBuilder(nestedPath, queryBuilder, None);
-      } else {
-        return new NestedQueryBuilder(nestedPath, queryBuilder, None).innerHit(
-                new InnerHitBuilder().setName(nestedPath).setFetchSourceContext(
-                        new FetchSourceContext(true, includes, new String[0])
-                )
-        );
-      }
+      return new NestedQueryBuilder(nestedPath, queryBuilder, None).innerHit(
+              new InnerHitBuilder().setName(nestedPath).setFetchSourceContext(
+                      new FetchSourceContext(true, includes, new String[0])
+              )
+      );
     } else {
       return queryBuilder;
     }
@@ -196,8 +202,7 @@ public class FilterQueryBuilder extends ExpressionNodeVisitor<QueryBuilder, Obje
             .flatMap(Collection::stream)
             .collect(Collectors.toList())) {
       nestedPaths.addAll(clauses.stream()
-              .filter(qb -> qb instanceof NestedQueryBuilder
-                      && ((NestedQueryBuilder) qb).innerHit() != null)
+              .filter(qb -> qb instanceof NestedQueryBuilder)
               .map(qb -> ((NestedQueryBuilder) qb).innerHit().getName())
               .collect(Collectors.toList()));
     }
@@ -214,7 +219,6 @@ public class FilterQueryBuilder extends ExpressionNodeVisitor<QueryBuilder, Obje
             .flatMap(Collection::stream)
             .collect(Collectors.toList())) {
       includes.addAll(clauses.stream()
-              .filter(qb -> ((NestedQueryBuilder) qb).innerHit() != null)
               .flatMap(qb -> Arrays.stream(((NestedQueryBuilder) qb)
                       .innerHit().getFetchSourceContext().includes()))
               .collect(Collectors.toList()));
@@ -238,6 +242,13 @@ public class FilterQueryBuilder extends ExpressionNodeVisitor<QueryBuilder, Obje
     clauses.forEach(clause -> accumulator.apply(
             queryBuilder, ((NestedQueryBuilder) clause).query()
     ));
+  }
+
+  private Integer countClauses(BoolQueryBuilder queryBuilder) {
+    return queryBuilder.must().size()
+            + queryBuilder.mustNot().size()
+            + queryBuilder.filter().size()
+            + queryBuilder.should().size();
   }
 
   private BoolQueryBuilder buildBoolQuery(FunctionExpression node,
