@@ -42,6 +42,7 @@ import static org.hamcrest.Matchers.arrayContaining;
 import static org.hamcrest.Matchers.emptyArray;
 import static org.hamcrest.Matchers.hasEntry;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 
@@ -55,6 +56,7 @@ import com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.type.Elastic
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.data.value.ElasticsearchExprValueFactory;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.mapping.IndexMapping;
 import com.amazon.opendistroforelasticsearch.sql.elasticsearch.planner.logical.ElasticsearchLogicalIndexAgg;
+import com.amazon.opendistroforelasticsearch.sql.exception.ExpressionEvaluationException;
 import com.amazon.opendistroforelasticsearch.sql.expression.DSL;
 import com.amazon.opendistroforelasticsearch.sql.expression.Expression;
 import com.amazon.opendistroforelasticsearch.sql.expression.NamedExpression;
@@ -607,5 +609,128 @@ class ElasticsearchIndexTest {
     assertEquals(1, sourceBuilder.aggregations().getAggregatorFactories().size());
     assertTrue(sourceBuilder.aggregations()
             .getAggregatorFactories().toArray()[0] instanceof NestedAggregationBuilder);
+  }
+
+  @Test
+  void incompatibleNestedClausesShouldThrowException() {
+    when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    String indexName = "test";
+    ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
+
+    Expression filterExpr = dsl.and(
+            dsl.or(
+                    dsl.less(
+                            DSL.nested("path.firstField", "path", INTEGER),
+                            literal(2)),
+                    dsl.equal(
+                            DSL.ref("normalField", INTEGER),
+                            literal(10)
+                    )
+            ),
+            dsl.greater(
+                    DSL.nested("path.secondField", "path", STRING),
+                    literal("John")
+            )
+    );
+
+    ExpressionEvaluationException e = assertThrows(
+            ExpressionEvaluationException.class, () -> index.implement(
+                    project(
+                            indexScan(
+                                    indexName, filterExpr
+                            )
+                    )
+            )
+    );
+    assertEquals(
+            "Cannot have more than one occurrence of the same nested path in WHERE statement",
+            e.getMessage()
+    );
+  }
+
+  @Test
+  void shouldVisitComplexIndexScan() {
+    when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    String indexName = "test";
+    ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
+
+    Expression filterExpr = dsl.and(
+            dsl.or(
+                    dsl.less(
+                            DSL.nested("firstPath.firstField", "firstPath", INTEGER),
+                            literal(2)),
+                    dsl.equal(
+                            DSL.ref("normalField", INTEGER),
+                            literal(10)
+                    )
+            ),
+            dsl.not(
+                    dsl.greater(
+                            DSL.nested("secondPath.secondField", "secondPath", STRING),
+                            literal("John")
+                    )
+            )
+    );
+
+    PhysicalPlan plan = index.implement(
+            project(
+                    indexScan(
+                            indexName, filterExpr
+                    )
+            )
+    );
+
+    assertTrue(plan instanceof ProjectOperator);
+    assertTrue(((ProjectOperator) plan).getInput() instanceof ElasticsearchIndexScan);
+
+    final QueryBuilder queryBuilder = ((ElasticsearchIndexScan) ((ProjectOperator) plan)
+            .getInput()).getRequest().getSourceBuilder().query();
+    assertTrue(queryBuilder instanceof BoolQueryBuilder);
+  }
+
+  @Test
+  void shouldExpandMustNotClauseInIndexScan() {
+    when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    String indexName = "test";
+    ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
+
+    Expression filterExpr = dsl.not(
+            dsl.and(
+                    dsl.or(
+                            dsl.less(
+                                    DSL.nested("firstPath.firstField", "firstPath", INTEGER),
+                                    literal(2)
+                            ),
+                            dsl.equal(
+                                    DSL.ref("normalField", INTEGER),
+                                    literal(10)
+                            )
+                    ),
+                    dsl.not(
+                            dsl.greater(
+                                    DSL.nested("secondPath.secondField", "secondPath", STRING),
+                                    literal("John")
+                            )
+                    )
+            )
+    );
+
+    PhysicalPlan plan = index.implement(
+            project(
+                    indexScan(
+                            indexName, filterExpr
+                    )
+            )
+    );
+
+    assertTrue(plan instanceof ProjectOperator);
+    assertTrue(((ProjectOperator) plan).getInput() instanceof ElasticsearchIndexScan);
+
+    final QueryBuilder queryBuilder = ((ElasticsearchIndexScan) ((ProjectOperator) plan)
+            .getInput()).getRequest().getSourceBuilder().query();
+    assertTrue(queryBuilder instanceof BoolQueryBuilder);
+    QueryBuilder innerQueryBuilder = ((BoolQueryBuilder) queryBuilder).must().get(0);
+    assertTrue(innerQueryBuilder instanceof BoolQueryBuilder);
+    assertTrue(((BoolQueryBuilder) innerQueryBuilder).mustNot().isEmpty());
   }
 }
