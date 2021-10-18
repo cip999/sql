@@ -252,6 +252,7 @@ expression
     | left=expression AND right=expression                          #andExpression
     | left=expression OR right=expression                           #orExpression
     | predicate                                                     #predicateExpression
+    | NESTED LR_BRACKET columnName COMMA expression RR_BRACKET      #nestedExpression
     ;
 
 predicate
@@ -265,6 +266,7 @@ predicate
 expressionAtom
     : constant                                                      #constantExpressionAtom
     | columnName                                                    #fullColumnNameExpressionAtom
+    | nestedAtom                                                    #nestedIdentifierAtom
     | functionCall                                                  #functionCallExpressionAtom
     | LR_BRACKET expression RR_BRACKET                              #nestedExpressionAtom
     | left=expressionAtom mathOperator right=expressionAtom         #mathExpressionAtom
@@ -322,6 +324,15 @@ convertedDataType
 caseFuncAlternative
     : WHEN condition=functionArg
       THEN consequent=functionArg
+    ;
+
+nestedAtom
+    : NESTED LR_BRACKET columnName (COMMA nestedAtomSecondArgument)? RR_BRACKET
+    ;
+
+nestedAtomSecondArgument
+    : columnName
+    | stringLiteral
     ;
 
 aggregateFunction
