@@ -65,6 +65,12 @@ public class ElasticsearchSettings extends Settings {
       Setting.Property.NodeScope,
       Setting.Property.Dynamic);
 
+  private static final Setting<?> SQL_NESTED_FLATTENED_LIMIT_SETTINGS = Setting.intSetting(
+          Key.SQL_NESTED_FLATTENED_LIMIT.getKeyValue(),
+          0,
+          Setting.Property.NodeScope,
+          Setting.Property.Dynamic);
+
   /**
    * Construct ElasticsearchSetting.
    * The ElasticsearchSetting must be singleton.
@@ -77,6 +83,8 @@ public class ElasticsearchSettings extends Settings {
         PPL_ENABLED_SETTINGS, new Updater(Key.PPL_ENABLED));
     register(settingBuilder, clusterSettings, Key.QUERY_SIZE_LIMIT,
         QUERY_SIZE_LIMIT_SETTINGS, new Updater(Key.QUERY_SIZE_LIMIT));
+    register(settingBuilder, clusterSettings, Key.SQL_NESTED_FLATTENED_LIMIT,
+            SQL_NESTED_FLATTENED_LIMIT_SETTINGS, new Updater(Key.SQL_NESTED_FLATTENED_LIMIT));
     defaultSettings = settingBuilder.build();
   }
 
@@ -122,6 +130,7 @@ public class ElasticsearchSettings extends Settings {
         .add(PPL_QUERY_MEMORY_LIMIT_SETTINGS)
         .add(PPL_ENABLED_SETTINGS)
         .add(QUERY_SIZE_LIMIT_SETTINGS)
+        .add(SQL_NESTED_FLATTENED_LIMIT_SETTINGS)
         .build();
   }
 }

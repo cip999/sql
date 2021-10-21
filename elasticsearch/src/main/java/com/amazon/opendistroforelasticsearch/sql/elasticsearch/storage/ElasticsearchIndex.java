@@ -16,6 +16,7 @@
 
 package com.amazon.opendistroforelasticsearch.sql.elasticsearch.storage;
 
+import static com.amazon.opendistroforelasticsearch.sql.common.setting.Settings.Key.SQL_NESTED_FLATTENED_LIMIT;
 import static org.apache.lucene.search.join.ScoreMode.None;
 
 import com.amazon.opendistroforelasticsearch.sql.common.antlr.SyntaxCheckException;
@@ -36,6 +37,7 @@ import com.amazon.opendistroforelasticsearch.sql.exception.ExpressionEvaluationE
 import com.amazon.opendistroforelasticsearch.sql.expression.NestedExpression;
 import com.amazon.opendistroforelasticsearch.sql.expression.ReferenceExpression;
 import com.amazon.opendistroforelasticsearch.sql.planner.DefaultImplementor;
+import com.amazon.opendistroforelasticsearch.sql.planner.logical.LogicalLimit;
 import com.amazon.opendistroforelasticsearch.sql.planner.logical.LogicalPlan;
 import com.amazon.opendistroforelasticsearch.sql.planner.logical.LogicalRelation;
 import com.amazon.opendistroforelasticsearch.sql.planner.physical.PhysicalPlan;
@@ -102,11 +104,8 @@ public class ElasticsearchIndex implements Table {
   @Override
   public PhysicalPlan implement(LogicalPlan plan) {
     ElasticsearchIndexScan indexScan = new ElasticsearchIndexScan(client, settings, indexName,
-        new ElasticsearchExprValueFactory(getFieldTypes(),
-                !plan.getChild().isEmpty()
-                        && plan.getChild().get(0) instanceof ElasticsearchLogicalIndexScan
-                        ? ((ElasticsearchLogicalIndexScan) plan.getChild().get(0)).getLimit()
-                        : null));
+        new ElasticsearchExprValueFactory(getFieldTypes(), getFlattenedLimit(plan))
+    );
 
     /*
      * Visit logical plan with index scan as context so logical operators visited, such as
@@ -114,6 +113,22 @@ public class ElasticsearchIndex implements Table {
      * index scan.
      */
     return plan.accept(new ElasticsearchDefaultImplementor(indexScan), indexScan);
+  }
+
+  private Integer getFlattenedLimit(LogicalPlan plan) {
+    Integer limit;
+    if (!plan.getChild().isEmpty()
+            && plan.getChild().get(0) instanceof ElasticsearchLogicalIndexScan) {
+      limit = ((ElasticsearchLogicalIndexScan) plan.getChild().get(0)).getLimit();
+    } else {
+      limit = 0;
+    }
+    if (limit == null) {
+      limit = 0;
+    }
+    Integer flattenedLimit = Math.max(
+            settings.getSettingValue(SQL_NESTED_FLATTENED_LIMIT), limit);
+    return flattenedLimit == 0 ? null : flattenedLimit;
   }
 
   @Override
