@@ -26,6 +26,7 @@ import com.amazon.opendistroforelasticsearch.sql.legacy.domain.MethodField;
 import com.amazon.opendistroforelasticsearch.sql.legacy.domain.Query;
 import com.amazon.opendistroforelasticsearch.sql.legacy.domain.Select;
 import com.amazon.opendistroforelasticsearch.sql.legacy.domain.TableOnJoinSelect;
+import com.amazon.opendistroforelasticsearch.sql.legacy.esdomain.LocalClusterState;
 import com.amazon.opendistroforelasticsearch.sql.legacy.esdomain.mapping.FieldMapping;
 import com.amazon.opendistroforelasticsearch.sql.legacy.exception.SqlFeatureNotImplementedException;
 import com.amazon.opendistroforelasticsearch.sql.legacy.executor.Format;
@@ -63,6 +64,7 @@ import java.util.TreeMap;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
+import static com.amazon.opendistroforelasticsearch.sql.legacy.plugin.SqlSettings.QUERY_NESTED_FLATTENED_LIMIT;
 import static java.util.Collections.unmodifiableMap;
 import static java.util.stream.Collectors.toSet;
 import static org.elasticsearch.action.admin.indices.mapping.get.GetFieldMappingsResponse.FieldMappingMetadata;
@@ -120,7 +122,7 @@ public class SelectResultSet extends ResultSet {
         this.head = schema.getHeaders();
         this.dateFieldFormatter = new DateFieldFormatter(indexName, columns, fieldAliasMap);
         if (query instanceof Select) {
-            this.limitRowCount = ((Select) query).getRowCount();
+            this.limitRowCount = getLimitRowCount((Select) query);
         }
 
         extractData();
@@ -135,6 +137,16 @@ public class SelectResultSet extends ResultSet {
         this.selectAll = false;
         this.formatType = formatType;
         populateResultSetFromCursor(cursor);
+    }
+
+    private Integer getLimitRowCount(Select query) {
+        Integer limit = query.getRowCount();
+        if (limit == null) {
+            limit = 0;
+        }
+        Integer flattenedLimit = Math.max(limit,
+                LocalClusterState.state().getSettingValue(QUERY_NESTED_FLATTENED_LIMIT));
+        return flattenedLimit == 0 ? null : flattenedLimit;
     }
 
     public String indexName(){
