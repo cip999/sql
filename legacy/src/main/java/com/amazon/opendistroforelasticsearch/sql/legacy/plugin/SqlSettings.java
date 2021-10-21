@@ -17,6 +17,7 @@ package com.amazon.opendistroforelasticsearch.sql.legacy.plugin;
 
 import com.amazon.opendistroforelasticsearch.sql.legacy.executor.Format;
 import org.elasticsearch.common.settings.Setting;
+import org.elasticsearch.discovery.zen.NodesFaultDetection;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -45,6 +46,7 @@ public class SqlSettings {
     public static final String QUERY_ANALYSIS_ENABLED = "opendistro.sql.query.analysis.enabled";
     public static final String QUERY_ANALYSIS_SEMANTIC_SUGGESTION = "opendistro.sql.query.analysis.semantic.suggestion";
     public static final String QUERY_ANALYSIS_SEMANTIC_THRESHOLD = "opendistro.sql.query.analysis.semantic.threshold";
+    public static final String QUERY_NESTED_FLATTENED_LIMIT = "opendistro.sql.engine.nested.flattened_limit";
     public static final String METRICS_ROLLING_WINDOW = "opendistro.sql.metrics.rollingwindow";
     public static final String METRICS_ROLLING_INTERVAL = "opendistro.sql.metrics.rollinginterval";
 
@@ -58,6 +60,7 @@ public class SqlSettings {
         Map<String, Setting<?>> settings = new HashMap<>();
         settings.put(SQL_ENABLED, Setting.boolSetting(SQL_ENABLED, true, NodeScope, Dynamic));
         settings.put(SQL_NEW_ENGINE_ENABLED, Setting.boolSetting(SQL_NEW_ENGINE_ENABLED, true, NodeScope, Dynamic));
+        settings.put(QUERY_NESTED_FLATTENED_LIMIT, Setting.intSetting(QUERY_NESTED_FLATTENED_LIMIT, 0, NodeScope, Dynamic));
         settings.put(QUERY_SLOWLOG, Setting.intSetting(QUERY_SLOWLOG, 2, NodeScope, Dynamic));
         settings.put(QUERY_RESPONSE_FORMAT, Setting.simpleString(QUERY_RESPONSE_FORMAT, Format.JDBC.getFormatName(),
                                                                  NodeScope, Dynamic));
