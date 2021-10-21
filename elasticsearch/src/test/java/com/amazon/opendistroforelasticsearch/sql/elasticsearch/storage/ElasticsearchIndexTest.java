@@ -159,6 +159,7 @@ class ElasticsearchIndexTest {
   @Test
   void implementRelationOperatorOnly() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
 
     String indexName = "test";
     LogicalPlan plan = relation(indexName);
@@ -171,6 +172,7 @@ class ElasticsearchIndexTest {
   @Test
   void implementRelationOperatorWithOptimization() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
 
     String indexName = "test";
     LogicalPlan plan = relation(indexName);
@@ -183,6 +185,7 @@ class ElasticsearchIndexTest {
   @Test
   void implementOtherLogicalOperators() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
 
     String indexName = "test";
     NamedExpression include = named("age", ref("age", INTEGER));
@@ -239,6 +242,7 @@ class ElasticsearchIndexTest {
   @Test
   void shouldImplLogicalIndexScan() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
 
     ReferenceExpression field = ref("name", STRING);
     NamedExpression named = named("n", field);
@@ -261,6 +265,7 @@ class ElasticsearchIndexTest {
   @Test
   void shouldNotPushDownFilterFarFromRelation() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
 
     ReferenceExpression field = ref("name", STRING);
     Expression filterExpr = dsl.equal(field, literal("John"));
@@ -286,6 +291,7 @@ class ElasticsearchIndexTest {
   @Test
   void shouldImplLogicalIndexScanAgg() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
 
     ReferenceExpression field = ref("name", STRING);
     Expression filterExpr = dsl.equal(field, literal("John"));
@@ -322,6 +328,7 @@ class ElasticsearchIndexTest {
   @Test
   void shouldNotPushDownAggregationFarFromRelation() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
 
     ReferenceExpression field = ref("name", STRING);
     Expression filterExpr = dsl.equal(field, literal("John"));
@@ -346,6 +353,7 @@ class ElasticsearchIndexTest {
   @Test
   void shouldImplIndexScanWithSort() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
 
     ReferenceExpression field = ref("name", STRING);
     NamedExpression named = named("n", field);
@@ -368,6 +376,7 @@ class ElasticsearchIndexTest {
   @Test
   void shouldImplIndexScanWithLimit() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
 
     ReferenceExpression field = ref("name", STRING);
     NamedExpression named = named("n", field);
@@ -389,6 +398,7 @@ class ElasticsearchIndexTest {
   @Test
   void shouldImplIndexScanWithSortAndLimit() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
 
     ReferenceExpression field = ref("name", STRING);
     NamedExpression named = named("n", field);
@@ -415,6 +425,7 @@ class ElasticsearchIndexTest {
   @Test
   void shouldNotPushDownLimitFarFromRelationButUpdateScanSize() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
 
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
@@ -439,6 +450,7 @@ class ElasticsearchIndexTest {
   @Test
   void shouldPushDownProjects() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
 
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
@@ -462,6 +474,8 @@ class ElasticsearchIndexTest {
   @Test
   void shouldPushDownProjectsAndFilter() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
+
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
 
@@ -496,6 +510,8 @@ class ElasticsearchIndexTest {
   @Test
   void shouldVisitIndexScanWithNestedFilter() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
+
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
 
@@ -524,6 +540,8 @@ class ElasticsearchIndexTest {
   @Test
   void shouldVisitIndexScanWithNestedProjects() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
+
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
 
@@ -552,6 +570,8 @@ class ElasticsearchIndexTest {
   @Test
   void shouldVisitIndexAggWithFilter() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
+
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
 
@@ -583,6 +603,8 @@ class ElasticsearchIndexTest {
   @Test
   void shouldVisitIndexAggWithNestedFilterAndFields() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
+
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
 
@@ -614,6 +636,8 @@ class ElasticsearchIndexTest {
   @Test
   void incompatibleNestedClausesShouldThrowException() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
+
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
 
@@ -651,6 +675,8 @@ class ElasticsearchIndexTest {
   @Test
   void shouldVisitComplexIndexScan() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
+
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
 
@@ -691,6 +717,8 @@ class ElasticsearchIndexTest {
   @Test
   void shouldExpandMustNotClauseInIndexScan() {
     when(settings.getSettingValue(Settings.Key.QUERY_SIZE_LIMIT)).thenReturn(200);
+    when(settings.getSettingValue(Settings.Key.SQL_NESTED_FLATTENED_LIMIT)).thenReturn(0);
+
     String indexName = "test";
     ElasticsearchIndex index = new ElasticsearchIndex(client, settings, indexName);
 
