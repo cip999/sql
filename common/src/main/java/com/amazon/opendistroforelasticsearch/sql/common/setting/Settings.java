@@ -36,7 +36,9 @@ public abstract class Settings {
     /**
      * Common Setting for SQL and PPL.
      */
-    QUERY_SIZE_LIMIT("opendistro.query.size_limit");
+    QUERY_SIZE_LIMIT("opendistro.query.size_limit"),
+
+    SQL_NESTED_FLATTENED_LIMIT("opendistro.sql.engine.nested.flattened_limit");
 
     @Getter
     private final String keyValue;
