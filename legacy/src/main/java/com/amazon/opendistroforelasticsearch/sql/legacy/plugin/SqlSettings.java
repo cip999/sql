@@ -46,7 +46,7 @@ public class SqlSettings {
     public static final String QUERY_ANALYSIS_ENABLED = "opendistro.sql.query.analysis.enabled";
     public static final String QUERY_ANALYSIS_SEMANTIC_SUGGESTION = "opendistro.sql.query.analysis.semantic.suggestion";
     public static final String QUERY_ANALYSIS_SEMANTIC_THRESHOLD = "opendistro.sql.query.analysis.semantic.threshold";
-    public static final String QUERY_NESTED_FLATTENED_LIMIT = "opendistro.sql.engine.nested.flattened_limit";
+    public static final String QUERY_NESTED_FLATTENED_LIMIT = "opendistro.sql.engine.legacy.nested.flattened_limit";
     public static final String METRICS_ROLLING_WINDOW = "opendistro.sql.metrics.rollingwindow";
     public static final String METRICS_ROLLING_INTERVAL = "opendistro.sql.metrics.rollinginterval";
 
